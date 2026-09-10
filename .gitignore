@@ -1,0 +1,39 @@
+.env
+.env.local
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+
+# data volumes
+backend/data/
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# flutter
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/build/
+frontend/.idea/
+frontend/*.iml
+frontend/coverage/
+**/*.g.dart
+!**/*.g.dart.bak
+
+# ide
+.idea/
+.vscode/
+*.log
+.DS_Store
