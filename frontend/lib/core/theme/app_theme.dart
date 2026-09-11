@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:second_brain/core/theme/tokens.dart';
 
 abstract final class AppTheme {
@@ -37,30 +36,34 @@ abstract final class AppTheme {
       surface: surface,
       onSurface: textHi,
     );
-    final baseText = GoogleFonts.interTextTheme(ThemeData(brightness: brightness).textTheme);
-    final textTheme = baseText.apply(bodyColor: textHi, displayColor: textHi).copyWith(
-      displaySmall: GoogleFonts.inter(
+    final base = ThemeData(brightness: brightness).textTheme;
+    final textTheme = base.apply(bodyColor: textHi, displayColor: textHi).copyWith(
+      displaySmall: base.displaySmall?.copyWith(
         fontSize: SbTokens.display,
         height: 34 / 28,
         fontWeight: FontWeight.w600,
         color: textHi,
+        letterSpacing: -0.4,
       ),
-      titleLarge: GoogleFonts.inter(
+      titleLarge: base.titleLarge?.copyWith(
         fontSize: SbTokens.title,
         height: 26 / 20,
         fontWeight: FontWeight.w600,
         color: textHi,
+        letterSpacing: -0.3,
       ),
-      bodyLarge: GoogleFonts.inter(fontSize: 16, color: textHi),
-      bodyMedium: GoogleFonts.inter(
+      bodyLarge: base.bodyLarge?.copyWith(fontSize: 16, color: textHi, letterSpacing: -0.15),
+      bodyMedium: base.bodyMedium?.copyWith(
         fontSize: SbTokens.body,
         height: 22 / 15,
         color: textHi,
+        letterSpacing: -0.15,
       ),
-      bodySmall: GoogleFonts.inter(
+      bodySmall: base.bodySmall?.copyWith(
         fontSize: SbTokens.caption,
         height: 16 / 12,
         color: textLo,
+        letterSpacing: -0.1,
       ),
     );
     return ThemeData(
@@ -87,8 +90,8 @@ abstract final class AppTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: surface,
-        hintStyle: GoogleFonts.inter(color: textLo),
-        labelStyle: GoogleFonts.inter(color: textLo),
+        hintStyle: TextStyle(color: textLo),
+        labelStyle: TextStyle(color: textLo),
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(SbTokens.radiusCard),

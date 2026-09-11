@@ -48,6 +48,32 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
     );
   }
 
+  Future<void> loginGoogle({String? idToken, String? accessToken}) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(
+      () => ref.read(authRepositoryProvider).loginGoogle(idToken: idToken, accessToken: accessToken),
+    );
+  }
+
+  Future<({bool emailed, String? devCode})> forgotPassword(String email) {
+    return ref.read(authRepositoryProvider).forgotPassword(email: email);
+  }
+
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String password,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(
+      () => ref.read(authRepositoryProvider).resetPassword(
+            email: email,
+            code: code,
+            password: password,
+          ),
+    );
+  }
+
   Future<void> logout() async {
     await ref.read(authRepositoryProvider).logout();
     await ref.read(localCacheProvider).wipe();

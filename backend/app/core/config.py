@@ -43,6 +43,13 @@ class Settings(BaseSettings):
     refresh_ttl_days: int = 30
     lockout_failures: int = 5
     lockout_minutes: int = 15
+    google_client_id: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+
     auth_ip_limit_per_min: int = 10
     refresh_ip_limit_per_min: int = 30
     ingest_limit_per_min: int = 20

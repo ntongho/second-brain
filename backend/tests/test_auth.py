@@ -172,6 +172,55 @@ async def test_request_id_echo(client):
     assert r.json()["error"]["request_id"] == "11111111-1111-1111-1111-111111111111"
 
 
+async def test_forgot_and_reset_password(client):
+    await client.post("/auth/register", json=REGISTER)
+    unknown = await client.post("/auth/forgot-password", json={"email": "nobody@example.com"})
+    assert unknown.status_code == 200, unknown.text
+    assert unknown.json()["ok"] is True
+    assert unknown.json().get("dev_code") in (None, "")
+
+    r = await client.post("/auth/forgot-password", json={"email": REGISTER["email"]})
+    assert r.status_code == 200, r.text
+    code = r.json().get("dev_code")
+    assert code and len(code) == 6 and code.isdigit()
+
+    bad = await client.post(
+        "/auth/reset-password",
+        json={"email": REGISTER["email"], "code": "000000", "password": "new-password-10"},
+    )
+    assert bad.status_code == 401
+
+    ok = await client.post(
+        "/auth/reset-password",
+        json={"email": REGISTER["email"], "code": code, "password": "new-password-10"},
+    )
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["user"]["email"] == REGISTER["email"]
+
+    old = await client.post("/auth/login", json={"email": REGISTER["email"], "password": REGISTER["password"]})
+    assert old.status_code == 401
+    fresh = await client.post("/auth/login", json={"email": REGISTER["email"], "password": "new-password-10"})
+    assert fresh.status_code == 200, fresh.text
+
+
+async def test_google_login_creates_and_reuses(client, monkeypatch):
+    from app.services.auth import AuthService
+
+    async def fake(self, token: str):
+        assert token == "good-id-token-value-xx"
+        return {"email": "ada@gmail.com", "name": "Ada Lovelace", "email_verified": True, "aud": "test"}
+
+    monkeypatch.setattr(AuthService, "_google_userinfo", fake)
+    r = await client.post("/auth/google", json={"id_token": "good-id-token-value-xx"})
+    assert r.status_code == 200, r.text
+    user = r.json()["user"]
+    assert user["email"] == "ada@gmail.com"
+    assert user["display_name"] == "Ada Lovelace"
+    r2 = await client.post("/auth/google", json={"id_token": "good-id-token-value-xx"})
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["user"]["id"] == user["id"]
+
+
 async def test_extra_field_forbidden(client):
     r = await client.post("/auth/register", json={**REGISTER, "role": "admin"})
     assert r.status_code == 400

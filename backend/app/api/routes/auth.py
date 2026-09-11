@@ -7,7 +7,18 @@ from fastapi import APIRouter, Depends, Query, Request
 from app.api.deps import client_ip, get_auth_service, get_current_user_id
 from app.core.config import get_settings
 from app.core.rate_limit import limiter
-from app.schemas.auth import LoginRequest, LogoutRequest, RefreshRequest, RegisterRequest, TokenPair, UserOut
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    GoogleLoginRequest,
+    LoginRequest,
+    LogoutRequest,
+    RefreshRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    TokenPair,
+    UserOut,
+)
 from app.services.auth import AuthService
 
 public_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -48,6 +59,36 @@ async def login(
 ) -> TokenPair:
     _limit_auth(request)
     return await svc.login(body.email, body.password)
+
+
+@public_router.post("/forgot-password", response_model=ForgotPasswordResponse)
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordRequest,
+    svc: Annotated[AuthService, Depends(get_auth_service)],
+) -> ForgotPasswordResponse:
+    _limit_auth(request)
+    return await svc.request_password_reset(body.email)
+
+
+@public_router.post("/reset-password", response_model=TokenPair)
+async def reset_password(
+    request: Request,
+    body: ResetPasswordRequest,
+    svc: Annotated[AuthService, Depends(get_auth_service)],
+) -> TokenPair:
+    _limit_auth(request)
+    return await svc.reset_password(body.email, body.code, body.password)
+
+
+@public_router.post("/google", response_model=TokenPair)
+async def google_login(
+    request: Request,
+    body: GoogleLoginRequest,
+    svc: Annotated[AuthService, Depends(get_auth_service)],
+) -> TokenPair:
+    _limit_auth(request)
+    return await svc.login_google(id_token=body.id_token, access_token=body.access_token)
 
 
 @public_router.post("/refresh", response_model=TokenPair)

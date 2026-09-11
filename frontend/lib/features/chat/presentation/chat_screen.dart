@@ -9,7 +9,6 @@ import 'package:second_brain/features/chat/presentation/widgets/chat_bubble.dart
 import 'package:second_brain/features/chat/presentation/widgets/chat_history_rail.dart';
 import 'package:second_brain/features/chat/presentation/widgets/composer.dart';
 import 'package:second_brain/features/chat/presentation/widgets/prompt_chips.dart';
-import 'package:second_brain/features/library/data/library_repository.dart';
 import 'package:second_brain/features/library/presentation/library_screen.dart';
 import 'package:second_brain/shared/widgets/floating_nav.dart';
 
@@ -33,7 +32,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(chatProvider.notifier).hydrate(widget.chatId);
-      ref.read(libraryRepositoryProvider).list();
     });
   }
 

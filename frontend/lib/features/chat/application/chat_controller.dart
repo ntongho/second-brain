@@ -91,14 +91,12 @@ class ChatNotifier extends Notifier<ChatState> {
       for (final row in await cache.messagesFor(chatId)) ChatMessage.fromJson(row),
     ];
     final remoteId = apiChatId(chatId);
-    if (remoteId == null) {
-      state = ChatState(
-        chatId: chatId,
-        messages: local,
-        offline: !ref.read(connectivityProvider),
-      );
-      return;
-    }
+    state = ChatState(
+      chatId: chatId,
+      messages: local,
+      offline: !ref.read(connectivityProvider),
+    );
+    if (remoteId == null) return;
     try {
       final remote = await ref.read(chatRepositoryProvider).loadMessages(remoteId);
       if (remote.isNotEmpty) {
@@ -109,7 +107,7 @@ class ChatNotifier extends Notifier<ChatState> {
       }
       state = ChatState(chatId: remoteId, messages: local, offline: false);
     } catch (_) {
-      state = ChatState(chatId: chatId, messages: local, offline: true);
+      state = state.copyWith(offline: true);
     }
   }
 

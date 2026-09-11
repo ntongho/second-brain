@@ -10,3 +10,9 @@ const kApiBaseUrl = String.fromEnvironment(
 );
 
 const kAppVersion = '1.1.1';
+
+/// Google Cloud **Web** OAuth client ID (used as serverClientId). Empty = hide/disable Google button.
+/// ```
+/// flutter run ... --dart-define=GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
+/// ```
+const kGoogleClientId = String.fromEnvironment('GOOGLE_CLIENT_ID', defaultValue: '');

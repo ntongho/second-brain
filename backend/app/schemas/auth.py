@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from pydantic import EmailStr, Field, field_validator
+from pydantic import EmailStr, Field, field_validator, model_validator
 
 from app.schemas.common import StrictModel
 
@@ -64,3 +64,54 @@ class TokenPair(StrictModel):
     token_type: str = "Bearer"
     expires_in: int
     user: UserOut
+
+
+class ForgotPasswordRequest(StrictModel):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def norm_email(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
+
+class ForgotPasswordResponse(StrictModel):
+    ok: bool = True
+    emailed: bool = False
+    dev_code: str | None = None
+
+
+class ResetPasswordRequest(StrictModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+    password: str = Field(min_length=10, max_length=72)
+
+    @field_validator("email")
+    @classmethod
+    def norm_email(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
+    @field_validator("code")
+    @classmethod
+    def digits_only(cls, v: str) -> str:
+        if not v.isdigit():
+            raise ValueError("invalid code")
+        return v
+
+
+class GoogleLoginRequest(StrictModel):
+    id_token: str | None = Field(default=None, max_length=8192)
+    access_token: str | None = Field(default=None, max_length=8192)
+
+    @model_validator(mode="after")
+    def one_token(self) -> "GoogleLoginRequest":
+        idt = (self.id_token or "").strip() or None
+        at = (self.access_token or "").strip() or None
+        self.id_token, self.access_token = idt, at
+        if not idt and not at:
+            raise ValueError("id_token or access_token required")
+        if idt and len(idt) < 20:
+            raise ValueError("id_token too short")
+        if at and len(at) < 20:
+            raise ValueError("access_token too short")
+        return self

@@ -40,6 +40,22 @@ class _ChatHistoryRailState extends ConsumerState<ChatHistoryRail> {
 
   Future<void> _load() async {
     try {
+      final cached = await ref.read(localCacheProvider).threads();
+      if (mounted && cached.isNotEmpty && _rows == null) {
+        setState(() {
+          _rows = [
+            for (final t in cached)
+              (
+                id: t['remoteId'] as String? ?? '',
+                title: t['title'] as String? ?? 'Chat',
+                createdAt: DateTime.tryParse(t['updatedAt'] as String? ?? '') ?? DateTime.now().toUtc(),
+              ),
+          ]..removeWhere((r) => r.id.isEmpty);
+          _loading = false;
+        });
+      }
+    } catch (_) {}
+    try {
       final rows = await ref.read(chatRepositoryProvider).listChats();
       if (!mounted) return;
       setState(() {
@@ -50,7 +66,7 @@ class _ChatHistoryRailState extends ConsumerState<ChatHistoryRail> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e;
+        _error = _rows == null ? e : null;
         _loading = false;
       });
     }

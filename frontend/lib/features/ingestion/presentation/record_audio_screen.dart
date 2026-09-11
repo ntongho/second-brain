@@ -264,13 +264,14 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
       if (q.length >= 8) {
         try {
           final hits = await lib.search(q: q, sourceType: 'text');
-          SearchHit? hit;
+          SearchHit? found;
           for (final h in hits) {
             if (h.documentId != voiceId) {
-              hit = h;
+              found = h;
               break;
             }
           }
+          final hit = found;
           if (hit != null && mounted) {
             final go = await showDialog<bool>(
               context: context,

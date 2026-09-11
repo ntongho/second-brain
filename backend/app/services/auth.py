@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import secrets
 from datetime import timedelta
+from email.message import EmailMessage
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -9,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.clock import utcnow
 from app.core.config import Settings, get_settings
 from app.core.errors import AppError
+from app.core.http import http_client
 from app.core.ids import email_hash, new_id, new_refresh_token, sha256_hex
 from app.core.logging import get_logger
 from app.core.metrics import auth_failures, auth_lockouts, refresh_reuse
@@ -18,9 +21,10 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.models.password_reset import PasswordReset
 from app.models.refresh_token import RefreshToken
 from app.models.user import User
-from app.schemas.auth import TokenPair, UserOut
+from app.schemas.auth import ForgotPasswordResponse, TokenPair, UserOut
 
 log = get_logger("auth")
 
@@ -249,3 +253,182 @@ class AuthService:
         if user is None:
             raise AppError(401, "AUTH", "Invalid access token")
         return self._user_out(user)
+
+    async def request_password_reset(self, email: str) -> ForgotPasswordResponse:
+        email = email.strip().lower()
+        user = await self._get_by_email(email)
+        if user is None:
+            dummy_verify("reset-dummy-xx")
+            return ForgotPasswordResponse(ok=True, emailed=False, dev_code=None)
+
+        now = utcnow()
+        await self.db.execute(
+            update(PasswordReset)
+            .where(PasswordReset.email == email, PasswordReset.used.is_(False))
+            .values(used=True)
+        )
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        row = PasswordReset(
+            id=new_id("pw"),
+            email=email,
+            code_sha256=sha256_hex(f"{email}:{code}"),
+            expires_at=now + timedelta(minutes=15),
+            used=False,
+            created_at=now,
+        )
+        self.db.add(row)
+        await self.db.commit()
+
+        emailed = False
+        if self.settings.smtp_host and self.settings.smtp_from:
+            try:
+                await self._send_reset_email(email, code)
+                emailed = True
+            except Exception:
+                log.warning("reset_email_failed", email_hash=email_hash(email))
+
+        dev_code = None
+        if not emailed and self.settings.app_env != "prod":
+            dev_code = code
+        return ForgotPasswordResponse(ok=True, emailed=emailed, dev_code=dev_code)
+
+    async def reset_password(self, email: str, code: str, password: str) -> TokenPair:
+        email = email.strip().lower()
+        digest = sha256_hex(f"{email}:{code}")
+        row = await self.db.scalar(
+            select(PasswordReset)
+            .where(PasswordReset.email == email, PasswordReset.code_sha256 == digest)
+            .order_by(PasswordReset.created_at.desc())
+        )
+        if row is None or row.used or _aware(row.expires_at) <= utcnow():
+            dummy_verify(password)
+            raise AppError(401, "AUTH", "Invalid or expired code")
+
+        user = await self._get_by_email(email)
+        if user is None:
+            raise AppError(401, "AUTH", "Invalid or expired code")
+
+        row.used = True
+        user.password_hash = hash_password(password)
+        user.failed_attempts = 0
+        user.locked_until = None
+        user.updated_at = utcnow()
+        await self._revoke_user_chain(user.id, "password_reset")
+        await self.db.commit()
+        log.info("password_reset_ok", user_id=user.id, email_hash=user.email_hash)
+        return await self._issue_pair(user)
+
+    async def login_google(self, id_token: str | None = None, access_token: str | None = None) -> TokenPair:
+        if id_token:
+            info = await self._google_userinfo(id_token)
+        elif access_token:
+            info = await self._google_userinfo_access(access_token)
+        else:
+            raise AppError(400, "VALIDATION", "Google sign-in failed")
+        email = str(info.get("email") or "").strip().lower()
+        if not email or "@" not in email:
+            raise AppError(401, "AUTH", "Google sign-in failed")
+        name = str(info.get("name") or "").strip()[:80]
+        user = await self._get_by_email(email)
+        if user is None:
+            now = utcnow()
+            user = User(
+                id=new_id("u"),
+                email=email,
+                email_hash=email_hash(email),
+                password_hash=hash_password(secrets.token_urlsafe(32)),
+                display_name=name,
+                failed_attempts=0,
+                locked_until=None,
+                created_at=now,
+                updated_at=now,
+            )
+            self.db.add(user)
+            try:
+                await self.db.flush()
+            except IntegrityError:
+                await self.db.rollback()
+                user = await self._get_by_email(email)
+                if user is None:
+                    raise AppError(401, "AUTH", "Google sign-in failed")
+        else:
+            if self._locked(user):
+                await self._raise_locked(user)
+            user.failed_attempts = 0
+            user.locked_until = None
+            if name and not (user.display_name or "").strip():
+                user.display_name = name
+            user.updated_at = utcnow()
+            await self.db.flush()
+        log.info("google_login_ok", user_id=user.id, email_hash=user.email_hash)
+        return await self._issue_pair(user)
+
+    async def _google_userinfo(self, id_token: str) -> dict:
+        audience = (self.settings.google_client_id or "").strip()
+        if not audience:
+            raise AppError(400, "VALIDATION", "Google sign-in is not configured")
+        try:
+            res = await http_client().get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"id_token": id_token},
+                timeout=10.0,
+            )
+        except Exception as e:
+            log.warning("google_tokeninfo_network", err=str(e))
+            raise AppError(401, "AUTH", "Google sign-in failed") from e
+        if res.status_code != 200:
+            log.warning("google_tokeninfo_http", status=res.status_code)
+            raise AppError(401, "AUTH", "Google sign-in failed")
+        data = res.json()
+        allowed = {a.strip() for a in audience.split(",") if a.strip()}
+        aud = data.get("aud")
+        if aud not in allowed:
+            log.warning("google_aud_mismatch")
+            raise AppError(401, "AUTH", "Google sign-in failed")
+        verified = data.get("email_verified")
+        if verified not in (True, "true", "1", 1, None, ""):
+            raise AppError(401, "AUTH", "Google sign-in failed")
+        if verified in (None, "") and not data.get("email"):
+            raise AppError(401, "AUTH", "Google sign-in failed")
+        return data
+
+    async def _google_userinfo_access(self, access_token: str) -> dict:
+        if not (self.settings.google_client_id or "").strip():
+            raise AppError(400, "VALIDATION", "Google sign-in is not configured")
+        try:
+            res = await http_client().get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10.0,
+            )
+        except Exception as e:
+            log.warning("google_userinfo_network", err=str(e))
+            raise AppError(401, "AUTH", "Google sign-in failed") from e
+        if res.status_code != 200:
+            log.warning("google_userinfo_http", status=res.status_code)
+            raise AppError(401, "AUTH", "Google sign-in failed")
+        data = res.json()
+        verified = data.get("email_verified")
+        if verified not in (True, "true", "1", 1, None, ""):
+            raise AppError(401, "AUTH", "Google sign-in failed")
+        return data
+
+    async def _send_reset_email(self, to: str, code: str) -> None:
+        import asyncio
+        import smtplib
+
+        s = self.settings
+        msg = EmailMessage()
+        msg["Subject"] = "Second Brain password reset"
+        msg["From"] = s.smtp_from
+        msg["To"] = to
+        msg.set_content(f"Your Second Brain reset code is {code}. It expires in 15 minutes.\n")
+
+        def _send() -> None:
+            with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=15) as smtp:
+                smtp.starttls()
+                if s.smtp_user:
+                    smtp.login(s.smtp_user, s.smtp_password)
+                smtp.send_message(msg)
+
+        await asyncio.to_thread(_send)
