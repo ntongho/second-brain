@@ -35,8 +35,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   String? _codeError;
   String? _formError;
   DateTime? _lockedUntil;
+  DateTime? _resendAt;
   Timer? _tick;
   bool _googleBusy = false;
+  bool _mailBusy = false;
+  String? _formInfo;
 
   @override
   void dispose() {
@@ -72,12 +75,24 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     return 'Try again in ${left.inHours > 0 ? '${left.inHours}:' : ''}$m:$s';
   }
 
+  String? get _resendWait {
+    final until = _resendAt;
+    if (until == null || !until.isAfter(DateTime.now())) return null;
+    final s = until.difference(DateTime.now()).inSeconds.clamp(1, 120);
+    return 'Resend code in ${s}s';
+  }
+
   void _startTick() {
     _tick?.cancel();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!_isLocked) {
-        _tick?.cancel();
         _lockedUntil = null;
+      }
+      if (_resendAt != null && !_resendAt!.isAfter(DateTime.now())) {
+        _resendAt = null;
+      }
+      if (!_isLocked && _resendAt == null) {
+        _tick?.cancel();
       }
       if (mounted) setState(() {});
     });
@@ -156,24 +171,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
     final notifier = ref.read(authProvider.notifier);
     if (_mode == _AuthMode.forgot) {
-      try {
-        final result = await notifier.forgotPassword(_email.text);
-        if (!mounted) return;
-        setState(() {
-          _mode = _AuthMode.reset;
-          if (result.devCode != null) {
-            _code.text = result.devCode!;
-            _formError = 'Reset code: ${result.devCode} — set a new password.';
-          } else if (result.emailed) {
-            _formError = 'Check your email for a 6-digit code.';
-          } else {
-            _formError = 'If that email is registered, enter the code we sent.';
-          }
-        });
-      } on ApiException catch (e) {
-        if (!mounted) return;
-        setState(() => _formError = e.message);
-      }
+      await _sendReset();
       return;
     }
 
@@ -193,6 +191,37 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       await notifier.login(_email.text, _password.text);
     }
     await _finishAuth();
+  }
+
+  Future<void> _sendReset({bool resend = false}) async {
+    if (_mailBusy) return;
+    if (_resendWait != null) return;
+    final dest = _email.text.trim();
+    setState(() {
+      _mailBusy = true;
+      _mode = _AuthMode.reset;
+      _formError = null;
+      _formInfo = 'Sending a 6-digit code to $dest… you can leave this screen as-is.';
+    });
+    try {
+      await ref.read(authProvider.notifier).forgotPassword(_email.text);
+      if (!mounted) return;
+      setState(() {
+        _mailBusy = false;
+        _resendAt = DateTime.now().add(const Duration(seconds: 45));
+        _formInfo = resend
+            ? 'New code sent to $dest. Use the newest email — older codes stop working.'
+            : 'Code is on the way to $dest. Check inbox and spam. It can take up to a minute.';
+      });
+      _startTick();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _mailBusy = false;
+        _formInfo = null;
+        _formError = e.message;
+      });
+    }
   }
 
   Future<void> _google() async {
@@ -244,7 +273,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider);
-    final busy = auth.isLoading || _googleBusy;
+    final authBusy = auth.isLoading || _googleBusy;
     final locked = _isLocked;
     return Scaffold(
       body: SafeArea(
@@ -256,18 +285,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               child: AutofillGroup(
                 child: ListView(
                   children: [
-                    const SizedBox(height: 32),
-                    Text('Second Brain', style: Theme.of(context).textTheme.displaySmall),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 48),
+                    Text('Second Brain', style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 6),
                     Text(_title, style: Theme.of(context).textTheme.bodySmall),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 28),
                     AuthField(
                       controller: _email,
                       label: 'Email',
                       keyboardType: TextInputType.emailAddress,
                       autofillHints: const [AutofillHints.email],
                       errorText: _emailError,
-                      enabled: !busy && !locked,
+                      enabled: !authBusy && !_mailBusy && !locked,
                       textInputAction: TextInputAction.next,
                       onChanged: (_) => setState(() {}),
                     ),
@@ -278,7 +307,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         label: '6-digit code',
                         keyboardType: TextInputType.number,
                         errorText: _codeError,
-                        enabled: !busy && !locked,
+                        enabled: !authBusy && !locked,
                         textInputAction: TextInputAction.next,
                         onChanged: (_) => setState(() {}),
                       ),
@@ -294,7 +323,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             ? const [AutofillHints.password]
                             : const [AutofillHints.newPassword],
                         errorText: _passwordError,
-                        enabled: !busy && !locked,
+                        enabled: !authBusy && !locked,
                         textInputAction: TextInputAction.done,
                         onChanged: (_) => setState(() {}),
                       ),
@@ -308,7 +337,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       AuthField(
                         controller: _name,
                         label: 'Display name (optional)',
-                        enabled: !busy && !locked,
+                        enabled: !authBusy && !locked,
                         textInputAction: TextInputAction.done,
                       ),
                     ],
@@ -316,26 +345,48 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       Align(
                         alignment: Alignment.centerLeft,
                         child: TextButton(
-                          onPressed: busy || locked
+                          onPressed: authBusy || locked
                               ? null
                               : () => setState(() {
                                     _mode = _AuthMode.forgot;
                                     _formError = null;
+                                    _formInfo = null;
                                   }),
                           child: const Text('Forgot password?'),
                         ),
                       ),
-                    if (_formError != null) ...[
+                    if (_mailBusy) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              _formInfo ?? 'Sending code…',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else if (_formError != null) ...[
                       const SizedBox(height: 12),
                       Text(
                         locked ? (_countdown ?? _formError!) : _formError!,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(color: SbTokens.danger),
                       ),
+                    ] else if (_formInfo != null) ...[
+                      const SizedBox(height: 12),
+                      Text(_formInfo!, style: Theme.of(context).textTheme.bodySmall),
                     ],
                     const SizedBox(height: 24),
                     FilledButton(
-                      onPressed: busy || locked || !_clientValid ? null : _submit,
-                      child: busy
+                      onPressed: authBusy || locked || !_clientValid ? null : _submit,
+                      child: authBusy
                           ? const SizedBox(
                               height: 22,
                               width: 22,
@@ -348,6 +399,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                               _AuthMode.login => 'Continue',
                             }),
                     ),
+                    if (_mode == _AuthMode.reset) ...[
+                      const SizedBox(height: 8),
+                      TextButton(
+                        onPressed: authBusy || _mailBusy || locked || _resendWait != null
+                            ? null
+                            : () => _sendReset(resend: true),
+                        child: Text(_mailBusy ? 'Sending…' : (_resendWait ?? 'Resend code')),
+                      ),
+                    ],
                     if (_mode == _AuthMode.login || _mode == _AuthMode.register) ...[
                       const SizedBox(height: 16),
                       Row(
@@ -362,18 +422,19 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       ),
                       const SizedBox(height: 16),
                       OutlinedButton(
-                        onPressed: busy || locked ? null : _google,
+                        onPressed: authBusy || locked ? null : _google,
                         style: OutlinedButton.styleFrom(minimumSize: const Size(64, 48)),
                         child: const Text('Continue with Google'),
                       ),
                     ],
                     const SizedBox(height: 16),
                     TextButton(
-                      onPressed: busy || locked
+                      onPressed: authBusy || _mailBusy || locked
                           ? null
                           : () => setState(() {
                                 _mode = _mode == _AuthMode.login ? _AuthMode.register : _AuthMode.login;
                                 _formError = null;
+                                _formInfo = null;
                               }),
                       child: Text(
                         _mode == _AuthMode.register || _mode == _AuthMode.forgot || _mode == _AuthMode.reset

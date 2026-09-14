@@ -31,13 +31,11 @@ class ChatBubble extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           constraints: const BoxConstraints(maxWidth: 560),
           decoration: BoxDecoration(
-            color: SbTokens.primary,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(SbTokens.radiusBubble),
+            border: Border.all(color: Theme.of(context).dividerColor),
           ),
-          child: Text(
-            message.content,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: Colors.white),
-          ),
+          child: Text(message.content, style: Theme.of(context).textTheme.bodyMedium),
         ),
       );
     }
@@ -49,20 +47,7 @@ class ChatBubble extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
         constraints: const BoxConstraints(maxWidth: 640),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(SbTokens.radiusBubble),
-          border: Border(
-            left: BorderSide(
-              color: message.failed
-                  ? SbTokens.danger
-                  : degraded
-                      ? SbTokens.audio
-                      : SbTokens.primary.withValues(alpha: 0.35),
-              width: 3,
-            ),
-          ),
-        ),
+        decoration: const BoxDecoration(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

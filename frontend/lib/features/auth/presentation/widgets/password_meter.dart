@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:second_brain/core/theme/tokens.dart';
 import 'package:second_brain/features/auth/domain/password_strength.dart';
 
 class PasswordMeter extends StatelessWidget {
@@ -22,7 +21,7 @@ class PasswordMeter extends StatelessWidget {
                 margin: EdgeInsets.only(right: i == 3 ? 0 : 6),
                 decoration: BoxDecoration(
                   color: on
-                      ? (s.score >= 3 ? SbTokens.success : SbTokens.audio)
+                      ? Theme.of(context).colorScheme.onSurface.withValues(alpha: s.score >= 3 ? 0.85 : 0.4)
                       : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(4),
                 ),

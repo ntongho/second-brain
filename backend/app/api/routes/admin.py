@@ -4,15 +4,18 @@ import asyncio
 import secrets
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.deps import get_db, require_admin
 from app.core.clock import utcnow
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.ids import new_id
 from app.db import get_sessionmaker
 from app.models.job import Job
+from app.services import admin_users as admin_users_svc
 from app.services.backup import list_backups, restore, snapshot
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -108,3 +111,63 @@ async def restore_backup(
         raise AppError(409, "CONFLICT", str(e)) from e
     except FileNotFoundError as e:
         raise AppError(404, "NOT_FOUND", str(e)) from e
+
+
+@router.get("/users")
+async def list_users(
+    _admin_id: Annotated[str, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+    cursor: str | None = None,
+    limit: int = 50,
+) -> dict:
+    return await admin_users_svc.list_users(
+        db,
+        admin_email=get_settings().admin_email_normalized,
+        cursor=cursor,
+        limit=limit,
+    )
+
+
+@router.post("/users/{user_id}/unlock")
+async def unlock_user(
+    user_id: str,
+    _admin_id: Annotated[str, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    row = await admin_users_svc.unlock_user(
+        db, user_id=user_id, admin_email=get_settings().admin_email_normalized
+    )
+    return row.model_dump(mode="json")
+
+
+@router.post("/users/{user_id}/revoke-sessions")
+async def revoke_user_sessions(
+    user_id: str,
+    admin_id: Annotated[str, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    row = await admin_users_svc.revoke_sessions(
+        db,
+        user_id=user_id,
+        admin_id=admin_id,
+        admin_email=get_settings().admin_email_normalized,
+    )
+    return row.model_dump(mode="json")
+
+
+@router.post("/users/{user_id}/send-reset")
+async def send_user_reset(
+    user_id: str,
+    _admin_id: Annotated[str, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    return await admin_users_svc.send_reset(db, user_id=user_id)
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    admin_id: Annotated[str, Depends(require_admin)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> dict:
+    return await admin_users_svc.delete_user(db, user_id=user_id, admin_id=admin_id)

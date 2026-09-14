@@ -15,6 +15,9 @@ class AuthInterceptor extends QueuedInterceptor {
     return p.contains('/auth/login') ||
         p.contains('/auth/register') ||
         p.contains('/auth/refresh') ||
+        p.contains('/auth/forgot-password') ||
+        p.contains('/auth/reset-password') ||
+        p.contains('/auth/google') ||
         o.extra['skipAuth'] == true;
   }
 
@@ -50,8 +53,11 @@ class AuthInterceptor extends QueuedInterceptor {
       }
       final res = await _dio.fetch(req);
       handler.resolve(res);
-    } catch (_) {
-      await _store.wipe();
+    } catch (e) {
+      final authFail = e is DioException && e.response?.statusCode == 401;
+      if (authFail) {
+        await _store.wipe();
+      }
       handler.next(err);
     }
   }

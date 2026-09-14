@@ -44,11 +44,16 @@ class Settings(BaseSettings):
     lockout_failures: int = 5
     lockout_minutes: int = 15
     google_client_id: str = ""
-    smtp_host: str = ""
+    smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from: str = ""
+    resend_api_key: str = ""
+    brevo_api_key: str = ""
+    gmail_webapp_url: str = ""
+    gmail_webapp_secret: str = ""
+    admin_email: str = ""
 
     auth_ip_limit_per_min: int = 10
     refresh_ip_limit_per_min: int = 30
@@ -89,6 +94,62 @@ class Settings(BaseSettings):
         if self.cors_origins.strip() == "*":
             return ["*"]
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def smtp_configured(self) -> bool:
+        return bool((self.smtp_user or "").strip() and self.smtp_password_clean)
+
+    @property
+    def mail_configured(self) -> bool:
+        return (
+            self.gmail_webapp_configured
+            or self.smtp_configured
+            or bool((self.resend_api_key or "").strip())
+            or bool((self.brevo_api_key or "").strip())
+        )
+
+    @property
+    def gmail_webapp_configured(self) -> bool:
+        return bool((self.gmail_webapp_url or "").strip() and (self.gmail_webapp_secret or "").strip())
+
+    @property
+    def smtp_sender(self) -> str:
+        return (self.smtp_from or self.smtp_user or "").strip()
+
+    @property
+    def mail_from_email(self) -> str:
+        raw = self.smtp_sender
+        if "<" in raw and ">" in raw:
+            return raw.split("<", 1)[1].split(">", 1)[0].strip()
+        return raw
+
+    @property
+    def mail_from_name(self) -> str:
+        raw = (self.smtp_from or "").strip()
+        if "<" in raw:
+            name = raw.split("<", 1)[0].strip().strip('"')
+            return name or "Second Brain"
+        return "Second Brain"
+
+    @property
+    def resend_from_address(self) -> str:
+        raw = (self.smtp_from or "").strip()
+        low = raw.lower()
+        if raw and "gmail.com" not in low and "googlemail.com" not in low:
+            return raw if "<" in raw else f"Second Brain <{raw}>"
+        return "Second Brain <onboarding@resend.dev>"
+
+    @property
+    def smtp_password_clean(self) -> str:
+        return "".join((self.smtp_password or "").split())
+
+    @property
+    def admin_email_normalized(self) -> str:
+        return (self.admin_email or "").strip().lower()
+
+    def is_admin_email(self, email: str) -> bool:
+        admin = self.admin_email_normalized
+        return bool(admin) and (email or "").strip().lower() == admin
 
 
 @lru_cache

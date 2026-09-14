@@ -88,10 +88,10 @@ class _ComposerState extends State<Composer> {
                       tooltip: 'Send',
                       onPressed: widget.enabled && _ctl.text.trim().isNotEmpty ? _submit : null,
                       style: IconButton.styleFrom(
-                        backgroundColor: SbTokens.primary,
-                        foregroundColor: Colors.white,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Theme.of(context).colorScheme.onPrimary,
                       ),
-                      icon: const Icon(Icons.send_rounded, color: Colors.white),
+                      icon: Icon(Icons.arrow_upward, color: Theme.of(context).colorScheme.onPrimary, size: 20),
                     ),
             ),
           ],

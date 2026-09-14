@@ -356,7 +356,7 @@ class _ChatHistoryRailState extends ConsumerState<ChatHistoryRail> {
       visualDensity: VisualDensity.compact,
       contentPadding: const EdgeInsets.only(left: 14, right: 4),
       selected: selected,
-      selectedTileColor: SbTokens.primary.withValues(alpha: 0.14),
+      selectedTileColor: onSurface.withValues(alpha: 0.06),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       title: Text(
         c.title,

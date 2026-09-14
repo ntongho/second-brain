@@ -9,6 +9,7 @@ import 'package:second_brain/features/ingestion/presentation/add_text_screen.dar
 import 'package:second_brain/features/ingestion/presentation/record_audio_screen.dart';
 import 'package:second_brain/features/ingestion/presentation/upload_pdf_screen.dart';
 import 'package:second_brain/features/library/presentation/library_screen.dart';
+import 'package:second_brain/features/settings/presentation/admin_users_screen.dart';
 import 'package:second_brain/features/settings/presentation/settings_screen.dart';
 import 'package:second_brain/features/viewer/presentation/document_viewer_screen.dart';
 
@@ -42,6 +43,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         }
         return '/chat';
       }
+      if (loggedIn && loc.startsWith('/admin')) {
+        if (auth.asData?.value?.isAdmin != true) return '/chat';
+      }
       return null;
     },
     routes: [
@@ -58,6 +62,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/chats', builder: (c, s) => const ChatsScreen()),
       GoRoute(path: '/library', builder: (c, s) => const LibraryScreen()),
       GoRoute(path: '/settings', builder: (c, s) => const SettingsScreen()),
+      GoRoute(path: '/admin/users', builder: (c, s) => const AdminUsersScreen()),
       GoRoute(
         path: '/ingest/text',
         builder: (c, s) => AddTextScreen(docId: s.uri.queryParameters['id']),

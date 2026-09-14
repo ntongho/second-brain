@@ -4,12 +4,14 @@ class AuthUser {
     required this.email,
     required this.displayName,
     required this.createdAt,
+    this.isAdmin = false,
   });
 
   final String id;
   final String email;
   final String displayName;
   final DateTime createdAt;
+  final bool isAdmin;
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
     return AuthUser(
@@ -17,6 +19,7 @@ class AuthUser {
       email: json['email'] as String,
       displayName: (json['display_name'] as String?) ?? '',
       createdAt: DateTime.parse(json['created_at'] as String),
+      isAdmin: json['is_admin'] == true,
     );
   }
 
@@ -25,6 +28,7 @@ class AuthUser {
         'email': email,
         'display_name': displayName,
         'created_at': createdAt.toIso8601String(),
+        'is_admin': isAdmin,
       };
 }
 

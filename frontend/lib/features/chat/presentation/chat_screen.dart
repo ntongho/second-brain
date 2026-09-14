@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:second_brain/core/network/connectivity.dart';
+import 'package:second_brain/core/theme/tokens.dart';
 import 'package:second_brain/features/chat/application/chat_controller.dart';
 import 'package:second_brain/features/chat/application/sync_queue.dart';
 import 'package:second_brain/features/chat/presentation/widgets/banner_stack.dart';
@@ -82,7 +83,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
           syncLabel: ref.watch(syncQueueProvider).banner,
           queued: ref.watch(syncQueueProvider).pending,
         ),
-        if (chat.streaming) const LinearProgressIndicator(minHeight: 2, color: Color(0xFF4F46E5)),
+        if (chat.streaming) const LinearProgressIndicator(minHeight: 1),
         Expanded(
           child: chat.messages.isEmpty
               ? Center(
@@ -211,7 +212,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
               width: 268,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  border: Border(right: BorderSide(color: Color(0x22FFFFFF))),
+                  border: Border(right: BorderSide(color: SbTokens.hairline)),
                 ),
                 child: ChatHistoryRail(),
               ),

@@ -14,14 +14,14 @@ class AuthNotifier extends AsyncNotifier<AuthUser?> {
     // as AsyncLoading, and the login screen treated that as "Could not sign in".
     ref.listen(tokenStoreProvider, (prev, next) {
       Future(() async {
-        final user = await ref.read(authRepositoryProvider).restore();
+        final user = await ref.read(authRepositoryProvider).restore(refresh: false);
         if (user == null) {
           await ref.read(localCacheProvider).wipe();
           state = const AsyncData(null);
         }
       });
     });
-    final user = await ref.read(authRepositoryProvider).restore();
+    final user = await ref.read(authRepositoryProvider).restore(refresh: true);
     if (user == null) {
       await ref.read(localCacheProvider).wipe();
     }

@@ -252,6 +252,64 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  /admin/users:
+    get:
+      operationId: adminListUsers
+      parameters:
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50, maximum: 100 }
+      responses:
+        '200': { description: operator user list }
+        '404': { description: not operator }
+  /admin/users/{user_id}/unlock:
+    post:
+      operationId: adminUnlockUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: unlocked }
+        '404': { description: not found }
+  /admin/users/{user_id}/revoke-sessions:
+    post:
+      operationId: adminRevokeSessions
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: refresh chain revoked }
+        '404': { description: not found }
+  /admin/users/{user_id}/send-reset:
+    post:
+      operationId: adminSendReset
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: reset email attempted }
+        '404': { description: not found }
+  /admin/users/{user_id}:
+    delete:
+      operationId: adminDeleteUser
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: deleted }
+        '404': { description: not found }
+        '409': { description: cannot delete self }
   /documents:
     get:
       operationId: listDocuments

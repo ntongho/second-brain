@@ -6,13 +6,16 @@ import jwt
 from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.security import decode_access_token
 from app.db import get_db
+from app.models.user import User
 from app.services.auth import AuthService
 
-__all__ = ["get_db", "get_auth_service", "get_current_user_id", "client_ip"]
+__all__ = ["get_db", "get_auth_service", "get_current_user_id", "require_admin", "client_ip"]
 
 
 async def get_auth_service(db: Annotated[AsyncSession, Depends(get_db)]) -> AuthService:
@@ -48,3 +51,14 @@ async def get_current_user_id(
         raise AppError(401, "AUTH", "Missing or invalid access token")
     request.state.user_id = sub
     return str(sub)
+
+
+async def require_admin(
+    user_id: Annotated[str, Depends(get_current_user_id)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> str:
+    """Operator only. Non-admins get 404 so the route is not advertised."""
+    user = await db.scalar(select(User).where(User.id == user_id))
+    if user is None or not get_settings().is_admin_email(user.email):
+        raise AppError(404, "NOT_FOUND", "Not found")
+    return user_id

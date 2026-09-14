@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import secrets
 from datetime import timedelta
 from email.message import EmailMessage
@@ -27,6 +28,7 @@ from app.models.user import User
 from app.schemas.auth import ForgotPasswordResponse, TokenPair, UserOut
 
 log = get_logger("auth")
+_reset_locks: dict[str, asyncio.Lock] = {}
 
 LOGIN_FAIL_MESSAGE = "Incorrect email or password"
 LOCKOUT_MESSAGE = "Account locked. Try again later."
@@ -53,6 +55,7 @@ class AuthService:
             email=user.email,
             display_name=user.display_name or "",
             created_at=_aware(user.created_at),
+            is_admin=self.settings.is_admin_email(user.email),
         )
 
     async def _issue_pair(self, user: User) -> TokenPair:
@@ -256,17 +259,28 @@ class AuthService:
 
     async def request_password_reset(self, email: str) -> ForgotPasswordResponse:
         email = email.strip().lower()
+        lock = _reset_locks.setdefault(email, asyncio.Lock())
+        async with lock:
+            return await self._request_password_reset_locked(email)
+
+    async def _request_password_reset_locked(self, email: str) -> ForgotPasswordResponse:
         user = await self._get_by_email(email)
         if user is None:
             dummy_verify("reset-dummy-xx")
             return ForgotPasswordResponse(ok=True, emailed=False, dev_code=None)
 
         now = utcnow()
-        await self.db.execute(
-            update(PasswordReset)
+        recent = await self.db.scalar(
+            select(PasswordReset)
             .where(PasswordReset.email == email, PasswordReset.used.is_(False))
-            .values(used=True)
+            .order_by(PasswordReset.created_at.desc())
         )
+        if recent is not None and _aware(recent.created_at) is not None:
+            age = (now - _aware(recent.created_at)).total_seconds()
+            if 0 <= age < 20:
+                # Same tap storm / double-click: do not mint a second code.
+                return ForgotPasswordResponse(ok=True, emailed=True, dev_code=None)
+
         code = f"{secrets.randbelow(1_000_000):06d}"
         row = PasswordReset(
             id=new_id("pw"),
@@ -280,17 +294,78 @@ class AuthService:
         await self.db.commit()
 
         emailed = False
-        if self.settings.smtp_host and self.settings.smtp_from:
-            try:
-                await self._send_reset_email(email, code)
-                emailed = True
-            except Exception:
-                log.warning("reset_email_failed", email_hash=email_hash(email))
+        if self.settings.app_env == "test":
+            return ForgotPasswordResponse(ok=True, emailed=False, dev_code=code)
 
-        dev_code = None
-        if not emailed and self.settings.app_env != "prod":
-            dev_code = code
-        return ForgotPasswordResponse(ok=True, emailed=emailed, dev_code=dev_code)
+        if not self.settings.mail_configured:
+            raise AppError(
+                503,
+                "UPSTREAM_DEGRADED",
+                "Password reset email is not configured. Add GMAIL_WEBAPP_URL and GMAIL_WEBAPP_SECRET (see SMTP-SETUP.md).",
+                retryable=False,
+            )
+
+        try:
+            await self._send_reset_email(email, code)
+            emailed = True
+            await self.db.execute(
+                update(PasswordReset)
+                .where(
+                    PasswordReset.email == email,
+                    PasswordReset.used.is_(False),
+                    PasswordReset.id != row.id,
+                )
+                .values(used=True)
+            )
+            await self.db.commit()
+        except Exception as e:
+            log.warning("reset_email_failed", email_hash=email_hash(email), err=type(e).__name__, detail=str(e)[:180])
+            import smtplib
+
+            detail = str(e).lower()
+            if "gmail_webapp" in detail or (
+                self.settings.gmail_webapp_configured and "brevo" not in detail and "resend" not in detail
+            ):
+                msg = (
+                    "Google mail relay failed. Redeploy the Apps Script as a Web app "
+                    "(Execute as: Me, Who has access: Anyone), match GMAIL_WEBAPP_SECRET, restart the API."
+                )
+            elif "brevo" in detail or (
+                (self.settings.brevo_api_key or "").strip() and "resend" not in detail
+            ):
+                if "401" in detail or "unauthorized" in detail:
+                    msg = "Brevo rejected the API key. Check BREVO_API_KEY in .env and restart the API."
+                elif "sender" in detail or "400" in detail:
+                    msg = (
+                        "Brevo sender is not verified. In Brevo → Senders, add SMTP_FROM "
+                        "(your Gmail) and confirm the code they email you."
+                    )
+                else:
+                    msg = "Brevo could not send the email. Check the API log line reset_email_failed."
+            elif "resend" in detail or (self.settings.resend_api_key or "").strip():
+                if "401" in detail:
+                    msg = "Resend rejected the API key. Check RESEND_API_KEY in .env and restart the API."
+                elif "403" in detail or "testing emails" in detail:
+                    msg = (
+                        "Resend test mode can only email the address you signed up with. "
+                        "Use Brevo (BREVO_API_KEY) to send to any inbox without buying a domain."
+                    )
+                else:
+                    msg = "Resend could not send the email. Check the API log line reset_email_failed."
+            elif isinstance(e, smtplib.SMTPAuthenticationError):
+                msg = (
+                    "Gmail rejected the mailbox login. SMTP_USER must be the full Gmail address, "
+                    "SMTP_PASSWORD must be a 16-character App password (not your normal Gmail password). Restart the API after changing .env."
+                )
+            elif isinstance(e, (TimeoutError, OSError, smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected)):
+                msg = (
+                    "This network cannot reach Gmail SMTP (port 587 blocked). "
+                    "Use GMAIL_WEBAPP_URL (Google Apps Script, HTTPS) — see SMTP-SETUP.md."
+                )
+            else:
+                msg = "Could not send the reset email. Check mail settings in .env and restart the API."
+            raise AppError(503, "UPSTREAM_DEGRADED", msg, retryable=True) from e
+        return ForgotPasswordResponse(ok=True, emailed=emailed, dev_code=None)
 
     async def reset_password(self, email: str, code: str, password: str) -> TokenPair:
         email = email.strip().lower()
@@ -414,21 +489,163 @@ class AuthService:
         return data
 
     async def _send_reset_email(self, to: str, code: str) -> None:
-        import asyncio
         import smtplib
+        import socket
+        import ssl
 
         s = self.settings
+        subject = "Your Second Brain reset code"
+        text = (
+            f"Your Second Brain password reset code is:\n\n{code}\n\n"
+            "It expires in 15 minutes. If you didn't ask for this, ignore this email.\n"
+        )
+        html = (
+            f"<p>Your Second Brain password reset code is:</p>"
+            f"<p style='font-size:24px;letter-spacing:4px'><b>{code}</b></p>"
+            f"<p>It expires in 15 minutes. If you didn't ask for this, ignore this email.</p>"
+        )
+
+        if s.gmail_webapp_configured:
+            payload = {
+                "secret": s.gmail_webapp_secret.strip(),
+                "to": to,
+                "subject": subject,
+                "text": text,
+                "html": html,
+            }
+            last = "gmail_webapp no attempt"
+            for attempt in range(3):
+                try:
+                    res = await http_client().post(
+                        s.gmail_webapp_url.strip(),
+                        json=payload,
+                        timeout=45.0,
+                        follow_redirects=True,
+                    )
+                except Exception as e:
+                    last = f"gmail_webapp network: {type(e).__name__}: {e}"
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                body = (res.text or "")[:300]
+                if res.status_code >= 300:
+                    last = f"gmail_webapp http {res.status_code}: {body}"
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                data = None
+                try:
+                    data = res.json()
+                except Exception:
+                    data = None
+                if isinstance(data, dict) and data.get("ok") is True:
+                    return
+                last = f"gmail_webapp bad body: {body}"
+                await asyncio.sleep(1.5 * (attempt + 1))
+            raise RuntimeError(last)
+
+        brevo = (s.brevo_api_key or "").strip()
+        if brevo:
+            from_email = s.mail_from_email
+            if not from_email or "@" not in from_email:
+                raise RuntimeError("brevo needs SMTP_FROM set to your verified sender Gmail")
+            res = await http_client().post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": brevo,
+                    "accept": "application/json",
+                    "content-type": "application/json",
+                },
+                json={
+                    "sender": {"name": s.mail_from_name, "email": from_email},
+                    "to": [{"email": to}],
+                    "subject": subject,
+                    "htmlContent": html,
+                    "textContent": text,
+                },
+                timeout=20.0,
+            )
+            if res.status_code >= 300:
+                raise RuntimeError(f"brevo http {res.status_code}: {res.text[:220]}")
+            return
+
+        key = (s.resend_api_key or "").strip()
+        if key:
+            res = await http_client().post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={
+                    "from": s.resend_from_address,
+                    "to": [to],
+                    "subject": subject,
+                    "text": text,
+                    "html": html,
+                },
+                timeout=20.0,
+            )
+            if res.status_code >= 300:
+                raise RuntimeError(f"resend http {res.status_code}: {res.text[:220]}")
+            return
+
+        sender = s.smtp_sender
+        if not sender:
+            raise RuntimeError("no smtp sender")
         msg = EmailMessage()
-        msg["Subject"] = "Second Brain password reset"
-        msg["From"] = s.smtp_from
+        msg["Subject"] = subject
+        msg["From"] = sender
         msg["To"] = to
-        msg.set_content(f"Your Second Brain reset code is {code}. It expires in 15 minutes.\n")
+        msg.set_content(text)
+        msg.add_alternative(html, subtype="html")
+
+        def _ipv4_socket(host: str, port: int, timeout: float):
+            last: OSError | None = None
+            for info in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
+                af, socktype, proto, _, sa = info
+                sock = socket.socket(af, socktype, proto)
+                sock.settimeout(timeout)
+                try:
+                    sock.connect(sa)
+                    return sock
+                except OSError as e:
+                    last = e
+                    sock.close()
+            raise last or OSError("ipv4 connect failed")
+
+        class _SMTP4(smtplib.SMTP):
+            def _get_socket(self, host, port, timeout):  # type: ignore[no-untyped-def]
+                return _ipv4_socket(host, port, timeout)
+
+        class _SMTP_SSL4(smtplib.SMTP_SSL):
+            def _get_socket(self, host, port, timeout):  # type: ignore[no-untyped-def]
+                raw = _ipv4_socket(host, port, timeout)
+                return self.context.wrap_socket(raw, server_hostname=host)
 
         def _send() -> None:
-            with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=15) as smtp:
-                smtp.starttls()
-                if s.smtp_user:
-                    smtp.login(s.smtp_user, s.smtp_password)
-                smtp.send_message(msg)
+            host = (s.smtp_host or "smtp.gmail.com").strip()
+            user = (s.smtp_user or "").strip()
+            pw = s.smtp_password_clean
+            ctx = ssl.create_default_context()
+            ports = [s.smtp_port]
+            for extra in (465, 587):
+                if extra not in ports:
+                    ports.append(extra)
+            last: Exception | None = None
+            for port in ports:
+                try:
+                    if port == 465:
+                        with _SMTP_SSL4(host, port, timeout=20, context=ctx) as smtp:
+                            smtp.login(user, pw)
+                            smtp.send_message(msg)
+                        return
+                    with _SMTP4(host, port, timeout=20) as smtp:
+                        smtp.ehlo()
+                        smtp.starttls(context=ctx)
+                        smtp.ehlo()
+                        smtp.login(user, pw)
+                        smtp.send_message(msg)
+                    return
+                except Exception as e:
+                    last = e
+            if last:
+                raise last
+            raise OSError("smtp send failed")
 
         await asyncio.to_thread(_send)

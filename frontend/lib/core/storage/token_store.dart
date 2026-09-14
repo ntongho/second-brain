@@ -10,6 +10,8 @@ class TokenStore extends ChangeNotifier {
       : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
+              iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+              webOptions: WebOptions(),
             );
 
   final FlutterSecureStorage _storage;
@@ -18,28 +20,62 @@ class TokenStore extends ChangeNotifier {
   static const _kRefresh = 'sb.refresh_token';
   static const _kUser = 'sb.user';
 
+  String? _access;
+  String? _refresh;
+  AuthUser? _user;
+  var _hydrated = false;
+
+  Future<void> _hydrate() async {
+    if (_hydrated) return;
+    _hydrated = true;
+    try {
+      _access = await _storage.read(key: _kAccess);
+      _refresh = await _storage.read(key: _kRefresh);
+      final raw = await _storage.read(key: _kUser);
+      if (raw != null && raw.isNotEmpty) {
+        _user = AuthUser.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      }
+    } catch (_) {}
+  }
+
   Future<void> save({
     required String accessToken,
     required String refreshToken,
     required AuthUser user,
   }) async {
+    _access = accessToken;
+    _refresh = refreshToken;
+    _user = user;
+    _hydrated = true;
     await _storage.write(key: _kAccess, value: accessToken);
     await _storage.write(key: _kRefresh, value: refreshToken);
     await _storage.write(key: _kUser, value: jsonEncode(user.toJson()));
     notifyListeners();
   }
 
-  Future<String?> readAccess() => _storage.read(key: _kAccess);
-  Future<String?> readRefresh() => _storage.read(key: _kRefresh);
+  Future<String?> readAccess() async {
+    await _hydrate();
+    return _access;
+  }
+
+  Future<String?> readRefresh() async {
+    await _hydrate();
+    return _refresh;
+  }
 
   Future<AuthUser?> readUser() async {
-    final raw = await _storage.read(key: _kUser);
-    if (raw == null || raw.isEmpty) return null;
-    return AuthUser.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+    await _hydrate();
+    return _user;
   }
 
   Future<void> wipe() async {
-    await _storage.deleteAll();
+    _access = null;
+    _refresh = null;
+    _user = null;
+    _hydrated = true;
+    await _storage.delete(key: _kAccess);
+    await _storage.delete(key: _kRefresh);
+    await _storage.delete(key: _kUser);
     notifyListeners();
   }
 }

@@ -50,14 +50,16 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
     application.add_middleware(RequestIdMiddleware)
-    # CORS is not in the pack; enabled so Flutter web (requested) can hit localhost:8000.
+    # Flutter web (Chrome) sends JSON + preflight OPTIONS. Allow any localhost port.
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
+        allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",
         allow_credentials=False,
-        allow_methods=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
         expose_headers=["X-Request-Id", "Retry-After"],
+        max_age=86400,
     )
     application.add_exception_handler(AppError, app_error_handler)
     application.add_exception_handler(RequestValidationError, validation_handler)

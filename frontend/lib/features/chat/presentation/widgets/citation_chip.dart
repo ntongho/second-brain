@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:second_brain/core/theme/tokens.dart';
 import 'package:second_brain/features/chat/domain/citation.dart';
 
 class CitationChip extends StatelessWidget {
@@ -16,11 +15,11 @@ class CitationChip extends StatelessWidget {
       padding: const EdgeInsets.only(right: 6, top: 6),
       child: ActionChip(
         visualDensity: VisualDensity.compact,
-        backgroundColor: SbTokens.citation.withValues(alpha: 0.16),
-        side: BorderSide(color: SbTokens.citation.withValues(alpha: 0.5)),
+        backgroundColor: Colors.transparent,
+        side: BorderSide(color: Theme.of(context).dividerColor),
         label: Text(
           '[$index] ${citation.title}',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: SbTokens.citation),
+          style: Theme.of(context).textTheme.bodySmall,
         ),
         onPressed: () => openCitationPreview(context, index: index, citation: citation),
       ),

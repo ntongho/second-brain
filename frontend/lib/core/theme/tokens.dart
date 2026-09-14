@@ -1,32 +1,34 @@
 import 'package:flutter/material.dart';
 
-/// 04 §4.1 design tokens. Dark-mode-first; warm-light fallback.
+/// Quiet product tokens. See frontend/DESIGN.md.
 abstract final class SbTokens {
-  static const primary = Color(0xFF4F46E5); // Deep Indigo
-  static const primaryVariant = Color(0xFF6D28D9); // Electric Violet
-  static const citation = Color(0xFF06B6D4); // Muted Cyan
-  static const audio = Color(0xFFF59E0B); // Warm Amber (degraded banner)
-  static const danger = Color(0xFFEF4444); // Soft Red (offline / errors)
-  static const success = Color(0xFF22C55E);
+  static const primary = Color(0xFFE8E6E3);
+  static const primaryVariant = Color(0xFFB8B4AE);
+  static const citation = Color(0xFF9A958C);
+  static const audio = Color(0xFFB8956A);
+  static const danger = Color(0xFFC45C52);
+  static const success = Color(0xFF6F8F68);
+  static const hairline = Color(0xFF2A2926);
+  static const onPrimary = Color(0xFF141413);
 
-  static const darkBg = Color(0xFF121214);
-  static const darkSurface = Color(0xFF1E1E22);
-  static const darkTextHi = Color(0xFFF4F4F5);
-  static const darkTextLo = Color(0xFFA1A1AA);
+  static const darkBg = Color(0xFF0E0E0D);
+  static const darkSurface = Color(0xFF161615);
+  static const darkTextHi = Color(0xFFF3F1EE);
+  static const darkTextLo = Color(0xFF8A8780);
 
-  static const lightBg = Color(0xFFF8FAFC);
+  static const lightBg = Color(0xFFF4F3F0);
   static const lightSurface = Color(0xFFFFFFFF);
-  static const lightTextHi = Color(0xFF18181B);
-  static const lightTextLo = Color(0xFF71717A);
+  static const lightTextHi = Color(0xFF1A1917);
+  static const lightTextLo = Color(0xFF6F6C66);
 
-  static const radiusCard = 14.0;
-  static const radiusBubble = 20.0;
-  static const radiusFab = 28.0;
-  static const motionMs = 180;
+  static const radiusCard = 8.0;
+  static const radiusBubble = 12.0;
+  static const radiusFab = 8.0;
+  static const motionMs = 160;
   static const grid = 4.0;
 
-  static const display = 28.0;
-  static const title = 20.0;
+  static const display = 22.0;
+  static const title = 18.0;
   static const body = 15.0;
   static const caption = 12.0;
 }
