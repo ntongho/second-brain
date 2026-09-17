@@ -29,9 +29,14 @@ class TokenStore extends ChangeNotifier {
     if (_hydrated) return;
     _hydrated = true;
     try {
-      _access = await _storage.read(key: _kAccess);
-      _refresh = await _storage.read(key: _kRefresh);
-      final raw = await _storage.read(key: _kUser);
+      final rows = await Future.wait([
+        _storage.read(key: _kAccess),
+        _storage.read(key: _kRefresh),
+        _storage.read(key: _kUser),
+      ]);
+      _access = rows[0];
+      _refresh = rows[1];
+      final raw = rows[2];
       if (raw != null && raw.isNotEmpty) {
         _user = AuthUser.fromJson(jsonDecode(raw) as Map<String, dynamic>);
       }

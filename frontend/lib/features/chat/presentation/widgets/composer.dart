@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:second_brain/core/theme/tokens.dart';
 
 class Composer extends StatefulWidget {
   const Composer({
@@ -65,12 +64,12 @@ class _ComposerState extends State<Composer> {
                 minLines: 1,
                 maxLines: 5,
                 style: TextStyle(color: onSurface, fontSize: 16),
-                cursorColor: SbTokens.primary,
+                cursorColor: onSurface,
                 textInputAction: TextInputAction.send,
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => _submit(),
                 decoration: const InputDecoration(
-                  hintText: 'Ask anything',
+                  hintText: 'Ask Brain',
                 ),
               ),
             ),

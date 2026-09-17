@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:second_brain/core/network/error_envelope.dart';
 import 'package:second_brain/core/storage/local_cache.dart';
-import 'package:second_brain/core/theme/tokens.dart';
 import 'package:second_brain/features/auth/application/auth_controller.dart';
 import 'package:second_brain/features/chat/application/chat_controller.dart';
 import 'package:second_brain/features/chat/data/chat_repository.dart';
@@ -150,7 +149,9 @@ class _ChatHistoryRailState extends ConsumerState<ChatHistoryRail> {
   }
 
   Future<void> _signOut() async {
-    await ref.read(authProvider.notifier).logout();
+    try {
+      await ref.read(authProvider.notifier).logout();
+    } catch (_) {}
     if (!mounted) return;
     context.go('/login');
   }
@@ -211,7 +212,7 @@ class _ChatHistoryRailState extends ConsumerState<ChatHistoryRail> {
                     visualDensity: VisualDensity.compact,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 10),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    leading: Icon(Icons.edit_square, size: 18, color: onSurface.withValues(alpha: 0.85)),
+                    leading: Icon(Icons.add, size: 18, color: onSurface.withValues(alpha: 0.85)),
                     title: Text('New chat', style: _navStyle(onSurface)),
                     onTap: _newChat,
                   ),
@@ -221,7 +222,7 @@ class _ChatHistoryRailState extends ConsumerState<ChatHistoryRail> {
                       controller: _search,
                       onChanged: (v) => setState(() => _query = v),
                       style: _histStyle(onSurface),
-                      cursorColor: SbTokens.primary,
+                      cursorColor: onSurface,
                       decoration: InputDecoration(
                         isDense: true,
                         hintText: 'Search chats',
@@ -316,7 +317,7 @@ class _ChatHistoryRailState extends ConsumerState<ChatHistoryRail> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   leading: CircleAvatar(
                     radius: 13,
-                    backgroundColor: SbTokens.primary.withValues(alpha: 0.22),
+                    backgroundColor: onSurface.withValues(alpha: 0.12),
                     child: Text(
                       initial,
                       style: _navStyle(onSurface).copyWith(fontSize: 12),

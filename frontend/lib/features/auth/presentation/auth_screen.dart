@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,7 +11,10 @@ import 'package:second_brain/features/auth/application/auth_controller.dart';
 import 'package:second_brain/features/auth/data/google_sign_in.dart';
 import 'package:second_brain/features/auth/domain/password_strength.dart';
 import 'package:second_brain/features/auth/presentation/widgets/auth_field.dart';
+import 'package:second_brain/features/auth/presentation/widgets/google_stable_button.dart';
 import 'package:second_brain/features/auth/presentation/widgets/password_meter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:second_brain/shared/widgets/brand_mark.dart';
 
 enum _AuthMode { login, register, forgot, reset }
 
@@ -37,13 +41,25 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   DateTime? _lockedUntil;
   DateTime? _resendAt;
   Timer? _tick;
+  StreamSubscription<GoogleSignInAccount?>? _googleSub;
   bool _googleBusy = false;
   bool _mailBusy = false;
   String? _formInfo;
 
   @override
+  void initState() {
+    super.initState();
+    if (kGoogleClientId.isNotEmpty) {
+      _googleSub = googleClient().onCurrentUserChanged.listen((account) {
+        if (account != null) _finishGoogle(account);
+      });
+    }
+  }
+
+  @override
   void dispose() {
     _tick?.cancel();
+    _googleSub?.cancel();
     _email.dispose();
     _password.dispose();
     _name.dispose();
@@ -116,8 +132,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (s.contains('idpiframe') || s.contains('origin') || s.contains('redirect_uri')) {
       return 'Google blocked this Chrome origin. In Google Cloud → Web client → Authorized JavaScript origins, add the exact URL in the address bar (http://localhost:PORT), wait a minute, restart Flutter.';
     }
-    if (s.contains('People API') || s.contains('403')) {
-      return 'Enable the People API / Google Identity in this Google Cloud project.';
+    if (s.contains('People API') || s.contains('people.googleapis.com')) {
+      return 'Google profile lookup failed. Use the Google button on this page (full restart, not hot reload).';
     }
     final cut = s.length > 220 ? '${s.substring(0, 220)}…' : s;
     return 'Google sign-in failed. $cut';
@@ -224,6 +240,28 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     }
   }
 
+  Future<void> _finishGoogle(GoogleSignInAccount account) async {
+    if (_googleBusy || _isLocked) return;
+    setState(() {
+      _googleBusy = true;
+      _formError = null;
+    });
+    try {
+      final tokens = await tokensFrom(account);
+      if (!mounted || tokens == null) return;
+      await ref.read(authProvider.notifier).loginGoogle(
+            idToken: tokens.idToken,
+            accessToken: tokens.accessToken,
+          );
+      await _finishAuth(google: true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _formError = _googleError(e));
+    } finally {
+      if (mounted) setState(() => _googleBusy = false);
+    }
+  }
+
   Future<void> _google() async {
     if (_isLocked) return;
     if (kGoogleClientId.isEmpty) {
@@ -286,9 +324,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 child: ListView(
                   children: [
                     const SizedBox(height: 48),
+                    const BrandMark(size: 32),
+                    const SizedBox(height: 14),
                     Text('Second Brain', style: Theme.of(context).textTheme.titleLarge),
                     const SizedBox(height: 6),
                     Text(_title, style: Theme.of(context).textTheme.bodySmall),
+                    if (!kIsWeb && kApiIsLoopback) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'This phone cannot reach localhost. Restart Flutter with --dart-define=API_BASE_URL=http://YOUR_PC_IP:8000/v1 (same Wi‑Fi). Emulator: 10.0.2.2.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(color: SbTokens.danger),
+                      ),
+                    ],
                     const SizedBox(height: 28),
                     AuthField(
                       controller: _email,
@@ -421,11 +468,14 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      OutlinedButton(
-                        onPressed: authBusy || locked ? null : _google,
-                        style: OutlinedButton.styleFrom(minimumSize: const Size(64, 48)),
-                        child: const Text('Continue with Google'),
-                      ),
+                      if (kIsWeb)
+                        const Center(child: StableGoogleButton())
+                      else
+                        OutlinedButton(
+                          onPressed: authBusy || locked ? null : _google,
+                          style: OutlinedButton.styleFrom(minimumSize: const Size(64, 48)),
+                          child: const Text('Continue with Google'),
+                        ),
                     ],
                     const SizedBox(height: 16),
                     TextButton(

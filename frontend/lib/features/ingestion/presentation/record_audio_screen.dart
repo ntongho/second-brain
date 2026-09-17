@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +10,7 @@ import 'package:second_brain/core/network/error_envelope.dart';
 import 'package:second_brain/core/theme/tokens.dart';
 import 'package:second_brain/features/ingestion/data/ingest_repository.dart';
 import 'package:second_brain/features/ingestion/data/memo_recorder.dart';
+import 'package:second_brain/features/ingestion/data/pick_bytes.dart';
 import 'package:second_brain/features/ingestion/presentation/duplicate.dart';
 import 'package:second_brain/features/ingestion/presentation/widgets/audio_waveform.dart';
 import 'package:second_brain/features/library/data/library_repository.dart';
@@ -191,18 +191,11 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
   }
 
   Future<void> _pick() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['wav', 'mp3', 'm4a', 'webm', 'ogg'],
-      withData: true,
+    final picked = await pickBytes(
+      extensions: const ['wav', 'mp3', 'm4a', 'webm', 'ogg'],
     );
-    if (picked == null || picked.files.isEmpty) return;
-    final f = picked.files.first;
-    final bytes = f.bytes;
-    if (bytes == null) {
-      setState(() => _error = 'Could not read that file.');
-      return;
-    }
+    if (picked == null) return;
+    final bytes = picked.bytes;
     if (bytes.length > 25 * 1024 * 1024) {
       setState(() => _error = 'Max size is 25MB.');
       return;
@@ -210,10 +203,10 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
     setState(() {
       _denied = false;
       _error = null;
-      _hint = 'File ready: ${f.name}';
-      _bytes = Uint8List.fromList(bytes);
-      _filename = f.name;
-      _title.text = _stem(f.name);
+      _hint = 'File ready: ${picked.name}';
+      _bytes = bytes;
+      _filename = picked.name;
+      _title.text = _stem(picked.name);
       _elapsed = 0;
     });
   }

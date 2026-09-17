@@ -9,6 +9,13 @@ const kApiBaseUrl = String.fromEnvironment(
   defaultValue: 'http://localhost:8000/v1',
 );
 
+/// Phone/emulator cannot reach the PC via localhost. Set API_BASE_URL to the
+/// machine LAN IP (device) or 10.0.2.2 (Android emulator).
+bool get kApiIsLoopback {
+  final host = Uri.tryParse(kApiBaseUrl)?.host ?? '';
+  return host == 'localhost' || host == '127.0.0.1' || host == '::1';
+}
+
 const kAppVersion = '1.1.1';
 
 /// Google Cloud **Web** OAuth client ID (used as serverClientId). Empty = hide/disable Google button.

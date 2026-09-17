@@ -120,7 +120,6 @@ async def hybrid_retrieve(
         )
         for r in sparse_rows
     ]
-
     dense: list[Retrieved] = []
     try:
         embedder = get_embedder()

@@ -2,8 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:second_brain/core/storage/token_store.dart';
 import 'package:second_brain/features/auth/domain/auth_user.dart';
 
-/// Single-flight 401 → refresh → retry-once → wipe (01 §5 / 04 S0).
-class AuthInterceptor extends QueuedInterceptor {
+/// 401 → one shared refresh → retry once → wipe and send the caller the error.
+/// Not a [QueuedInterceptor]: awaiting inside that class deadlocks Dio (logout/chats hang).
+class AuthInterceptor extends Interceptor {
   AuthInterceptor(this._store, this._dio);
 
   final TokenStore _store;
@@ -15,6 +16,7 @@ class AuthInterceptor extends QueuedInterceptor {
     return p.contains('/auth/login') ||
         p.contains('/auth/register') ||
         p.contains('/auth/refresh') ||
+        p.contains('/auth/logout') ||
         p.contains('/auth/forgot-password') ||
         p.contains('/auth/reset-password') ||
         p.contains('/auth/google') ||
@@ -23,13 +25,17 @@ class AuthInterceptor extends QueuedInterceptor {
 
   @override
   void onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
-    if (!_isPublic(options)) {
-      final access = await _store.readAccess();
-      if (access != null && access.isNotEmpty) {
-        options.headers['Authorization'] = 'Bearer $access';
+    try {
+      if (!_isPublic(options)) {
+        final access = await _store.readAccess();
+        if (access != null && access.isNotEmpty) {
+          options.headers['Authorization'] = 'Bearer $access';
+        }
       }
+      handler.next(options);
+    } catch (e, st) {
+      handler.reject(DioException(requestOptions: options, error: e, stackTrace: st));
     }
-    handler.next(options);
   }
 
   @override
@@ -48,16 +54,13 @@ class AuthInterceptor extends QueuedInterceptor {
       final req = err.requestOptions;
       req.extra['_retried'] = true;
       final access = await _store.readAccess();
-      if (access != null) {
+      if (access != null && access.isNotEmpty) {
         req.headers['Authorization'] = 'Bearer $access';
       }
       final res = await _dio.fetch(req);
       handler.resolve(res);
-    } catch (e) {
-      final authFail = e is DioException && e.response?.statusCode == 401;
-      if (authFail) {
-        await _store.wipe();
-      }
+    } catch (_) {
+      await _store.wipe();
       handler.next(err);
     }
   }
@@ -78,7 +81,11 @@ class AuthInterceptor extends QueuedInterceptor {
     final res = await _dio.post<Map<String, dynamic>>(
       '/auth/refresh',
       data: {'refresh_token': refresh},
-      options: Options(extra: {'skipAuth': true}),
+      options: Options(
+        extra: {'skipAuth': true},
+        sendTimeout: const Duration(seconds: 8),
+        receiveTimeout: const Duration(seconds: 8),
+      ),
     );
     final data = res.data!;
     await _store.save(

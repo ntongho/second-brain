@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:second_brain/core/config.dart';
 import 'package:second_brain/core/network/api_client.dart';
+import 'package:second_brain/core/theme/appearance_sheet.dart';
+import 'package:second_brain/core/theme/theme_controller.dart';
 import 'package:second_brain/features/auth/application/auth_controller.dart';
+import 'package:second_brain/features/chat/presentation/widgets/how_it_works.dart';
 
 final _readyProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
@@ -53,6 +56,21 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             title: const Text('Last backup'),
             subtitle: Text(backup == null || backup.isEmpty ? 'None yet (daily 03:15 UTC)' : backup),
+          ),
+          const SizedBox(height: 8),
+          ListTile(
+            title: const Text('Theme'),
+            subtitle: Text(switch (ref.watch(themeModeProvider)) {
+              ThemeMode.light => 'Light',
+              ThemeMode.dark => 'Dark',
+              ThemeMode.system => 'Match device',
+            }),
+            onTap: () => showAppearanceSheet(context),
+          ),
+          ListTile(
+            title: const Text('How it works'),
+            subtitle: const Text('Library → ask → citations'),
+            onTap: () => showHowItWorks(context),
           ),
           const SizedBox(height: 12),
           FilledButton.tonal(

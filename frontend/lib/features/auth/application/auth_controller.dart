@@ -10,21 +10,27 @@ final authProvider = AsyncNotifierProvider<AuthNotifier, AuthUser?>(AuthNotifier
 class AuthNotifier extends AsyncNotifier<AuthUser?> {
   @override
   Future<AuthUser?> build() async {
+    var alive = true;
+    ref.onDispose(() => alive = false);
     // Listen, don't watch: save() during login used to rebuild this notifier
     // as AsyncLoading, and the login screen treated that as "Could not sign in".
     ref.listen(tokenStoreProvider, (prev, next) {
       Future(() async {
         final user = await ref.read(authRepositoryProvider).restore(refresh: false);
+        if (!alive) return;
         if (user == null) {
           await ref.read(localCacheProvider).wipe();
           state = const AsyncData(null);
         }
       });
     });
-    final user = await ref.read(authRepositoryProvider).restore(refresh: true);
+    final user = await ref.read(authRepositoryProvider).restore(refresh: false);
     if (user == null) {
       await ref.read(localCacheProvider).wipe();
+      return null;
     }
+    // Do not POST /auth/refresh here. Chats also 401 → refresh; two refreshes
+    // with the same token revoke the whole chain (refresh_reuse_revoked_chain).
     return user;
   }
 

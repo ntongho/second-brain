@@ -37,20 +37,20 @@ class LibraryDoc {
 
   factory LibraryDoc.fromJson(Map<String, dynamic> json) {
     return LibraryDoc(
-      id: json['id'] as String,
+      id: json['id']?.toString() ?? '',
       title: json['title'] as String? ?? '',
       sourceType: json['source_type'] as String? ?? 'text',
       status: json['status'] as String? ?? '',
       createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now().toUtc(),
       tags: [for (final t in (json['tags'] as List? ?? const [])) t.toString()],
-      charCount: json['char_count'] as int? ?? 0,
-      chunkCount: json['chunk_count'] as int? ?? 0,
-      pageCount: json['page_count'] as int?,
+      charCount: (json['char_count'] as num?)?.toInt() ?? 0,
+      chunkCount: (json['chunk_count'] as num?)?.toInt() ?? 0,
+      pageCount: (json['page_count'] as num?)?.toInt(),
       error: json['error'] as String?,
       text: json['text'] as String?,
-      highlightStart: json['highlight_start'] as int?,
-      highlightEnd: json['highlight_end'] as int?,
-      highlightPage: json['highlight_page'] as int?,
+      highlightStart: (json['highlight_start'] as num?)?.toInt(),
+      highlightEnd: (json['highlight_end'] as num?)?.toInt(),
+      highlightPage: (json['highlight_page'] as num?)?.toInt(),
       highlightSnippet: json['highlight_snippet'] as String?,
       jobId: json['job_id'] as String?,
     );

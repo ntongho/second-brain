@@ -1,11 +1,11 @@
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:second_brain/core/network/error_envelope.dart';
 import 'package:second_brain/core/theme/tokens.dart';
 import 'package:second_brain/features/ingestion/data/ingest_repository.dart';
+import 'package:second_brain/features/ingestion/data/pick_bytes.dart';
 import 'package:second_brain/features/ingestion/presentation/duplicate.dart';
 import 'package:second_brain/features/library/data/library_repository.dart';
 
@@ -25,18 +25,11 @@ class _UploadPdfScreenState extends ConsumerState<UploadPdfScreen> {
   CancelToken? _cancel;
 
   Future<void> _pick() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'md', 'txt', 'text', 'markdown'],
-      withData: true,
+    final picked = await pickBytes(
+      extensions: const ['pdf', 'md', 'txt', 'text', 'markdown'],
     );
-    if (picked == null || picked.files.isEmpty) return;
-    final f = picked.files.first;
-    final bytes = f.bytes;
-    if (bytes == null) {
-      setState(() => _error = 'Could not read that file.');
-      return;
-    }
+    if (picked == null) return;
+    final bytes = picked.bytes;
     if (bytes.length > 25 * 1024 * 1024) {
       setState(() => _error = 'Max size is 25MB.');
       return;
@@ -45,13 +38,13 @@ class _UploadPdfScreenState extends ConsumerState<UploadPdfScreen> {
     setState(() {
       _busy = true;
       _error = null;
-      _name = f.name;
+      _name = picked.name;
       _phase = 'Uploading';
       _progress = 0;
     });
     try {
       final accepted = await ref.read(libraryRepositoryProvider).ingestPdf(
-            filename: f.name,
+            filename: picked.name,
             bytes: bytes,
             cancelToken: _cancel,
             onSendProgress: (sent, total) {

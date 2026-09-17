@@ -151,9 +151,11 @@ class _DocumentViewerScreenState extends ConsumerState<DocumentViewerScreen> {
                 ),
               ),
               if (_showTranscript)
-                SelectableText(
-                  doc.text ?? '',
-                  style: Theme.of(context).textTheme.bodyMedium,
+                SelectableText.rich(
+                  TextSpan(
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    children: _spans(doc.text ?? '', _findSnippet(doc.text ?? '', doc.highlightSnippet)),
+                  ),
                 ),
             ],
           ),
@@ -191,16 +193,17 @@ class _DocumentViewerScreenState extends ConsumerState<DocumentViewerScreen> {
         final pageIndex = doc.highlightSnippet != null ? i - 1 : i;
         final pageNo = pageIndex + 1;
         _keys.putIfAbsent(pageNo, GlobalKey.new);
-        final cited = citedPage == pageNo || (citedPage == null && _pageHasHighlight(pages, pageIndex, hs, he));
+        final fromSnippet = _findSnippet(pages[pageIndex], doc.highlightSnippet);
+        final highlight = fromSnippet ?? _localHighlight(pages, pageIndex, hs, he);
         return KeyedSubtree(
           key: _keys[pageNo],
           child: _paper(
             pageNo: pageNo,
             total: pages.length,
-            cited: cited,
+            cited: highlight != null,
             body: pages[pageIndex],
             png: _png[pageNo],
-            highlight: cited ? _localHighlight(pages, pageIndex, hs, he) : null,
+            highlight: highlight,
           ),
         );
       },
@@ -295,9 +298,19 @@ class _DocumentViewerScreenState extends ConsumerState<DocumentViewerScreen> {
     ];
   }
 
-  bool _pageHasHighlight(List<String> pages, int index, int? hs, int? he) {
-    if (hs == null || he == null) return false;
-    return _localHighlight(pages, index, hs, he) != null;
+  (int, int)? _findSnippet(String body, String? snippet) {
+    var needle = (snippet ?? '').trim();
+    if (needle.isEmpty || body.isEmpty) return null;
+    var i = body.indexOf(needle);
+    if (i >= 0) return (i, i + needle.length);
+    if (needle.length > 96) needle = needle.substring(0, 96).trim();
+    i = body.indexOf(needle);
+    if (i >= 0) return (i, i + needle.length);
+    final b = body.toLowerCase();
+    final n = needle.toLowerCase();
+    i = b.indexOf(n);
+    if (i >= 0) return (i, (i + needle.length).clamp(0, body.length));
+    return null;
   }
 
   (int, int)? _localHighlight(List<String> pages, int index, int? hs, int? he) {

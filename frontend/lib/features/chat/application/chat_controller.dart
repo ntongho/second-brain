@@ -76,16 +76,8 @@ class ChatNotifier extends Notifier<ChatState> {
   Future<void> hydrate(String? chatId) async {
     final cache = ref.read(localCacheProvider);
     if (chatId == null) {
-      if (_fresh) {
-        _fresh = false;
-        return;
-      }
-      final threads = await cache.threads();
-      if (threads.isEmpty) {
-        state = ChatState(offline: !ref.read(connectivityProvider));
-        return;
-      }
-      chatId = threads.first['remoteId'] as String;
+      _fresh = false;
+      return;
     }
     var local = [
       for (final row in await cache.messagesFor(chatId)) ChatMessage.fromJson(row),

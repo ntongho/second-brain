@@ -57,7 +57,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       _error = null;
     });
     try {
-      final rows = await ref.read(libraryRepositoryProvider).list(force: _docs != null);
+      final rows = await ref.read(libraryRepositoryProvider).list(force: true);
       if (!mounted) return;
       setState(() {
         _docs = rows;

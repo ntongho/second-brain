@@ -4,6 +4,7 @@ import 'package:second_brain/core/network/connectivity.dart';
 import 'package:second_brain/core/router/app_router.dart';
 import 'package:second_brain/features/chat/application/sync_queue.dart';
 import 'package:second_brain/core/theme/app_theme.dart';
+import 'package:second_brain/core/theme/theme_controller.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,12 +19,13 @@ class SecondBrainApp extends ConsumerWidget {
     ref.watch(connectivityProvider);
     ref.watch(syncQueueProvider);
     final router = ref.watch(routerProvider);
+    final themeMode = ref.watch(themeModeProvider);
     return MaterialApp.router(
       title: 'Second Brain',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.dark, // 04: dark-mode-first; light is the fallback
+      themeMode: themeMode,
       routerConfig: router,
     );
   }

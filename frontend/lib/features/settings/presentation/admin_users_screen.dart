@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:second_brain/core/network/error_envelope.dart';
 import 'package:second_brain/core/theme/tokens.dart';
 import 'package:second_brain/features/auth/application/auth_controller.dart';
@@ -100,7 +101,17 @@ class _AdminUsersScreenState extends ConsumerState<AdminUsersScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Users'),
-        actions: [IconButton(tooltip: 'Reload', onPressed: _loading ? null : _reload, icon: const Icon(Icons.refresh))],
+        actions: [
+          TextButton(onPressed: () => context.go('/chat'), child: const Text('Chat')),
+          TextButton(
+            onPressed: () async {
+              await ref.read(authProvider.notifier).logout();
+              if (context.mounted) context.go('/login');
+            },
+            child: const Text('Log out'),
+          ),
+          IconButton(tooltip: 'Reload', onPressed: _loading ? null : _reload, icon: const Icon(Icons.refresh)),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
