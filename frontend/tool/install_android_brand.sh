@@ -14,6 +14,10 @@ fi
 
 mkdir -p "$DEST/main/res" "$DEST/debug"
 cp -R "$SRC/main/res/." "$DEST/main/res/"
+MAN="$DEST/main/AndroidManifest.xml"
+if [[ -f "$MAN" ]]; then
+  sed -i 's/android:label="[^"]*"/android:label="SecondBrain"/' "$MAN"
+fi
 # Keep Flutter's debug manifest; only ensure cleartext if missing.
 if [[ -f "$DEST/debug/AndroidManifest.xml" ]]; then
   if ! grep -q 'usesCleartextTraffic' "$DEST/debug/AndroidManifest.xml"; then

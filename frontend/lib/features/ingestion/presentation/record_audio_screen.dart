@@ -47,6 +47,7 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
   final _levels = List<double>.filled(28, 0.08);
   var _peak = 0.0;
   late final TextEditingController _title;
+  final _nameFocus = FocusNode();
 
   static const _cap = 10 * 60;
   static const _minSeconds = 1.5;
@@ -55,7 +56,7 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
   @override
   void initState() {
     super.initState();
-    _title = TextEditingController(text: _stampTitle());
+    _title = TextEditingController();
   }
 
   @override
@@ -65,6 +66,7 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
     _cancel?.cancel('leave');
     _rec?.dispose();
     _title.dispose();
+    _nameFocus.dispose();
     super.dispose();
   }
 
@@ -172,12 +174,16 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
         _hint = 'That take was too short. Record at least a couple of seconds.';
         _bytes = null;
       } else {
-        _hint = 'Name it, play it back, then add it to the library.';
-        if (_title.text.trim().isEmpty || _title.text.startsWith('Voice memo ·')) {
-          _title.text = _stampTitle();
-        }
+        _hint = null;
+        _title.text = '';
+        _appendTo = null;
       }
     });
+    if (bytes != null && !short && !tiny) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _nameFocus.requestFocus();
+      });
+    }
   }
 
   Future<void> _discard() async {
@@ -187,6 +193,8 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
       _hint = null;
       _error = null;
       _peak = 0;
+      _appendTo = null;
+      _title.text = '';
     });
   }
 
@@ -203,7 +211,7 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
     setState(() {
       _denied = false;
       _error = null;
-      _hint = 'File ready: ${picked.name}';
+      _hint = null;
       _bytes = bytes;
       _filename = picked.name;
       _title.text = _stem(picked.name);
@@ -297,8 +305,8 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
 
     if (target != null && transcript.isNotEmpty) {
       final dest = await lib.get(target.id);
-      final stamp = DateTime.now().toUtc().toIso8601String().substring(0, 16).replaceFirst('T', ' ');
-      final merged = '${(dest.text ?? '').trim()}\n\n--- Voice · ${voice.title} · $stamp UTC ---\n$transcript'.trim();
+      final prev = (dest.text ?? '').trim();
+      final merged = prev.isEmpty ? transcript : '$prev\n\n$transcript';
       final saved = await lib.patch(target.id, text: merged);
       try {
         await lib.delete(voiceId);
@@ -317,6 +325,20 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
     if (mounted) context.go('/doc/$voiceId');
   }
 
+  Future<void> _addToLibrary() async {
+    if (_busy || _bytes == null) return;
+    if (_appendTo == null) {
+      final name = _title.text.trim();
+      if (name.isEmpty) {
+        _nameFocus.requestFocus();
+        setState(() => _error = 'Give this memo a name before adding it to the library.');
+        return;
+      }
+      _title.text = name;
+    }
+    await _upload();
+  }
+
   Future<void> _upload() async {
     final bytes = _bytes;
     if (bytes == null || _busy) return;
@@ -328,10 +350,13 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
       _progress = 0;
     });
     try {
+      final title = _appendTo != null
+          ? _stampTitle()
+          : (_title.text.trim().isEmpty ? _stampTitle() : _title.text.trim());
       final accepted = await ref.read(libraryRepositoryProvider).ingestAudio(
             filename: _filename,
             bytes: bytes,
-            title: _title.text.trim().isEmpty ? _stampTitle() : _title.text.trim(),
+            title: title,
             durationSeconds: _elapsed >= _minSeconds ? _elapsed : null,
             cancelToken: _cancel,
             onSendProgress: (sent, total) {
@@ -412,110 +437,106 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
             _recording
                 ? 'Speak now. The bar fills as time passes. Tap the red button to stop.'
                 : reviewing
-                    ? 'Play it back. If it’s you, add it to the library.'
+                    ? (_appendTo == null
+                        ? 'Name this take, play it back, then add it to the library.'
+                        : 'Transcript only will be added to “${_appendTo!.title}”.')
                     : 'Tap the amber mic, allow the browser if asked, then speak. Max 10 minutes.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: 20),
-          AudioWaveform(levels: _levels, active: _recording),
-          const SizedBox(height: 16),
-          Center(
-            child: Text(
-              _recording || reviewing ? _clock(_elapsed) : '00:00',
-              style: Theme.of(context).textTheme.displaySmall?.copyWith(
-                    color: _recording ? SbTokens.danger : SbTokens.audio,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: ((_recording ? _elapsed : 0) / _cap).clamp(0, 1),
-              minHeight: 12,
-              color: _recording ? SbTokens.danger : SbTokens.audio,
-              backgroundColor: const Color(0x33F59E0B),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _recording
-                ? 'Recorded ${_clock(_elapsed)} of 10:00'
-                : reviewing
-                    ? 'Take ${_clock(_elapsed)}  ·  ${(_bytes!.length / 1024).toStringAsFixed(0)} KB'
-                    : '0:00 of 10:00 max',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          if (_recording)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Center(
-                child: Text(
-                  _peak < 0.08 ? 'Can’t hear you — move closer to the mic' : 'Hearing you',
-                  style: TextStyle(color: _peak < 0.08 ? SbTokens.danger : SbTokens.success),
-                ),
+          if (!reviewing) ...[
+            const SizedBox(height: 20),
+            AudioWaveform(levels: _levels, active: _recording),
+            const SizedBox(height: 16),
+            Center(
+              child: Text(
+                _recording ? _clock(_elapsed) : '00:00',
+                style: Theme.of(context).textTheme.displaySmall?.copyWith(
+                      color: _recording ? SbTokens.danger : SbTokens.audio,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
               ),
             ),
-          const SizedBox(height: 24),
-          Center(
-            child: GestureDetector(
-              onTap: _busy
-                  ? null
-                  : () {
-                      if (_recording) {
-                        _stop();
-                      } else if (!reviewing) {
-                        _start();
-                      }
-                    },
-              child: SizedBox(
-                width: 108,
-                height: 108,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 108,
-                      height: 108,
-                      child: CircularProgressIndicator(
-                        value: _recording ? (_elapsed / _cap).clamp(0.0, 1.0) : 0,
-                        strokeWidth: 6,
-                        color: SbTokens.danger,
-                        backgroundColor: const Color(0x33F59E0B),
-                      ),
-                    ),
-                    AnimatedContainer(
-                      duration: const Duration(milliseconds: 180),
-                      width: 84,
-                      height: 84,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: _recording ? SbTokens.danger : SbTokens.audio,
-                      ),
-                      child: Icon(
-                        _recording ? Icons.stop_rounded : Icons.mic,
-                        size: 40,
-                        color: Colors.black,
-                      ),
-                    ),
-                  ],
-                ),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: ((_recording ? _elapsed : 0) / _cap).clamp(0, 1),
+                minHeight: 12,
+                color: _recording ? SbTokens.danger : SbTokens.audio,
+                backgroundColor: const Color(0x33F59E0B),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Center(
-            child: Text(
-              _recording
-                  ? 'Tap to stop'
-                  : reviewing
-                      ? ''
-                      : 'Tap to record',
+            const SizedBox(height: 6),
+            Text(
+              _recording ? 'Recorded ${_clock(_elapsed)} of 10:00' : '0:00 of 10:00 max',
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),
-          ),
+            if (_recording)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Center(
+                  child: Text(
+                    _peak < 0.08 ? 'Can’t hear you — move closer to the mic' : 'Hearing you',
+                    style: TextStyle(color: _peak < 0.08 ? SbTokens.danger : SbTokens.success),
+                  ),
+                ),
+              ),
+            const SizedBox(height: 24),
+            Center(
+              child: GestureDetector(
+                onTap: _busy
+                    ? null
+                    : () {
+                        if (_recording) {
+                          _stop();
+                        } else {
+                          _start();
+                        }
+                      },
+                child: SizedBox(
+                  width: 108,
+                  height: 108,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 108,
+                        height: 108,
+                        child: CircularProgressIndicator(
+                          value: _recording ? (_elapsed / _cap).clamp(0.0, 1.0) : 0,
+                          strokeWidth: 6,
+                          color: SbTokens.danger,
+                          backgroundColor: const Color(0x33F59E0B),
+                        ),
+                      ),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        width: 84,
+                        height: 84,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _recording ? SbTokens.danger : SbTokens.audio,
+                        ),
+                        child: Icon(
+                          _recording ? Icons.stop_rounded : Icons.mic,
+                          size: 40,
+                          color: Colors.black,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                _recording ? 'Tap to stop' : 'Tap to record',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ],
           if (_denied) ...[
             const SizedBox(height: 16),
             const Text(
@@ -530,6 +551,29 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
               label: const Text('Or pick an audio file'),
             ),
           if (reviewing) ...[
+            if (_appendTo == null) ...[
+              TextField(
+                controller: _title,
+                focusNode: _nameFocus,
+                enabled: !_busy,
+                autofocus: true,
+                textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'Name',
+                  hintText: 'e.g. Kitchen remodel notes',
+                ),
+                onChanged: (_) {
+                  if (_error != null) setState(() => _error = null);
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Take ${_clock(_elapsed)}  ·  ${(_bytes!.length / 1024).toStringAsFixed(0)} KB',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 16),
+            ],
             VoicePlayer(bytes: _bytes!),
             const SizedBox(height: 12),
             OutlinedButton.icon(
@@ -546,7 +590,7 @@ class _RecordAudioScreenState extends ConsumerState<RecordAudioScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: FilledButton(
-                    onPressed: _busy ? null : _upload,
+                    onPressed: _busy ? null : _addToLibrary,
                     child: _busy
                         ? const SizedBox(
                             height: 22,

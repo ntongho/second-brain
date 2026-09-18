@@ -43,8 +43,9 @@ Future<void> openCitationPreview(
     builder: (ctx) {
       return AlertDialog(
         title: Text('[$index] ${citation.title}$pageBit'),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         content: SizedBox(
-          width: 420,
+          width: MediaQuery.sizeOf(ctx).width,
           child: SingleChildScrollView(child: SelectableText(snippet)),
         ),
         actions: [

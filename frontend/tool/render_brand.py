@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Vector-ish brand rasterizer. Geometric only — no photo, no model."""
+"""Geometric twin-lobe mark. Vector-ish raster — no photo, no model."""
 
 from __future__ import annotations
 
@@ -9,40 +9,60 @@ from PIL import Image, ImageDraw
 
 CANVAS = (14, 14, 13, 255)  # #0E0E0D
 INK = (243, 241, 238, 255)  # #F3F1EE
-HAIR = (42, 41, 38, 255)  # #2A2926
+ECHO = (90, 88, 84, 255)  # dim twin
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _box(m: float, span: float, x0: float, y0: float, x1: float, y1: float) -> list[float]:
+    return [
+        m + x0 * span,
+        m + y0 * span,
+        m + x1 * span,
+        m + y1 * span,
+    ]
+
+
+def _lobes(d: ImageDraw.ImageDraw, m: float, span: float, dx: float, dy: float, fill, outline=None, width: int = 0) -> None:
+    def e(x0: float, y0: float, x1: float, y1: float) -> None:
+        b = _box(m, span, x0, y0, x1, y1)
+        b[0] += dx
+        b[2] += dx
+        b[1] += dy
+        b[3] += dy
+        kw: dict = {"fill": fill}
+        if outline is not None:
+            kw["outline"] = outline
+            kw["width"] = width
+        d.ellipse(b, **kw)
+
+    e(0.06, 0.16, 0.58, 0.78)  # left hemisphere
+    e(0.38, 0.10, 0.94, 0.72)  # right hemisphere
+    e(0.18, 0.58, 0.52, 0.94)  # cerebellum
 
 
 def _draw_mark(size: int, *, bg: tuple[int, int, int, int] | None, safe: float = 0.0) -> Image.Image:
     img = Image.new("RGBA", (size, size), bg if bg is not None else (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    inset = int(size * (0.18 + safe))
-    outer = [inset, inset, size - inset - 1, size - inset - 1]
-    radius = max(4, int((outer[2] - outer[0]) * 0.18))
-    d.rounded_rectangle(outer, radius=radius, fill=INK)
+    m = size * (0.14 + safe)
+    span = size - 2 * m
+    echo_w = max(2, int(size * 0.028))
+    shift = span * 0.055
 
-    # inner page
-    pad = max(2, int(size * 0.045))
-    inner = [outer[0] + pad, outer[1] + pad, outer[2] - pad, outer[3] - pad]
-    ir = max(3, radius - pad)
-    d.rounded_rectangle(inner, radius=ir, fill=CANVAS)
+    _lobes(d, m, span, shift, shift * 0.7, None, outline=ECHO, width=echo_w)
+    _lobes(d, m, span, 0, 0, INK)
 
-    # fold (top-right of inner page)
-    w = inner[2] - inner[0]
-    fold = max(6, int(w * 0.28))
-    x1, y1, x2, y2 = inner
-    d.polygon([(x2, y1), (x2 - fold, y1), (x2, y1 + fold)], fill=INK)
-
-    # three quiet lines — a note, not a logo-mark explosion
-    lx0 = inner[0] + int(w * 0.18)
-    lx1 = inner[2] - int(w * 0.22)
-    ly = inner[1] + int(w * 0.48)
-    stroke = max(1, int(size * 0.028))
-    gap = max(3, int(w * 0.12))
-    for i, frac in enumerate((1.0, 0.78, 0.52)):
-        y = ly + i * gap
-        x_end = lx0 + int((lx1 - lx0) * frac)
-        d.rounded_rectangle([lx0, y, x_end, y + stroke], radius=stroke // 2, fill=HAIR)
+    # midline cleft — two thoughts, one mark
+    cx = m + span * 0.48
+    cleft_w = max(2, int(size * 0.034))
+    d.line(
+        [(cx, m + span * 0.20), (cx + span * 0.04, m + span * 0.68)],
+        fill=bg if bg is not None else CANVAS,
+        width=cleft_w,
+    )
+    # stem
+    stem = _box(m, span, 0.46, 0.78, 0.58, 0.97)
+    r = max(2, int(span * 0.04))
+    d.rounded_rectangle(stem, radius=r, fill=INK)
     return img
 
 
@@ -72,7 +92,6 @@ def main() -> None:
     _save(mask.resize((512, 512), Image.Resampling.LANCZOS), brand / "maskable-512.png")
     _save(mask.resize((192, 192), Image.Resampling.LANCZOS), brand / "maskable-192.png")
 
-    # Flutter web defaults (overwrite after `flutter create`)
     _save(master.resize((32, 32), Image.Resampling.LANCZOS), web / "favicon.png")
     _save(master.resize((192, 192), Image.Resampling.LANCZOS), web / "icons" / "Icon-192.png")
     _save(master.resize((512, 512), Image.Resampling.LANCZOS), web / "icons" / "Icon-512.png")
@@ -80,7 +99,6 @@ def main() -> None:
     _save(mask.resize((512, 512), Image.Resampling.LANCZOS), web / "icons" / "Icon-maskable-512.png")
     _save(master.resize((180, 180), Image.Resampling.LANCZOS), web / "apple-touch-icon.png")
 
-    # Android mipmap densities from 48dp base + drop-in overlay for flutter create
     android = brand / "android"
     overlay = ROOT / "android_overlay" / "app" / "src" / "main" / "res"
     densities = {

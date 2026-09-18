@@ -38,24 +38,23 @@ class _ChatHistoryRailState extends ConsumerState<ChatHistoryRail> {
   }
 
   Future<void> _load() async {
+    final cache = ref.read(localCacheProvider);
     try {
-      final cached = await ref.read(localCacheProvider).threads();
-      if (mounted && cached.isNotEmpty && _rows == null) {
+      final cached = await cache.threads();
+      if (mounted && cached.isNotEmpty) {
         setState(() {
-          _rows = [
-            for (final t in cached)
-              (
-                id: t['remoteId'] as String? ?? '',
-                title: t['title'] as String? ?? 'Chat',
-                createdAt: DateTime.tryParse(t['updatedAt'] as String? ?? '') ?? DateTime.now().toUtc(),
-              ),
-          ]..removeWhere((r) => r.id.isEmpty);
+          _rows = _rowsFromCache(cached);
           _loading = false;
+          _error = null;
         });
       }
     } catch (_) {}
     try {
       final rows = await ref.read(chatRepositoryProvider).listChats();
+      if (!mounted) return;
+      await cache.replaceThreads([
+        for (final r in rows) {'remoteId': r.id, 'title': r.title, 'updatedAt': r.createdAt.toUtc().toIso8601String()},
+      ]);
       if (!mounted) return;
       setState(() {
         _rows = rows;
@@ -64,11 +63,41 @@ class _ChatHistoryRailState extends ConsumerState<ChatHistoryRail> {
       });
     } catch (e) {
       if (!mounted) return;
+      if (_rows != null && _rows!.isNotEmpty) {
+        setState(() {
+          _loading = false;
+          _error = null;
+        });
+        return;
+      }
+      try {
+        final cached = await cache.threads();
+        final rows = _rowsFromCache(cached);
+        if (rows.isNotEmpty) {
+          setState(() {
+            _rows = rows;
+            _loading = false;
+            _error = null;
+          });
+          return;
+        }
+      } catch (_) {}
       setState(() {
-        _error = _rows == null ? e : null;
+        _error = e;
         _loading = false;
       });
     }
+  }
+
+  List<_ChatRow> _rowsFromCache(List<Map<String, dynamic>> cached) {
+    return [
+      for (final t in cached)
+        (
+          id: t['remoteId'] as String? ?? '',
+          title: t['title'] as String? ?? 'Chat',
+          createdAt: DateTime.tryParse(t['updatedAt'] as String? ?? '') ?? DateTime.now().toUtc(),
+        ),
+    ]..removeWhere((r) => r.id.isEmpty);
   }
 
   bool _isToday(DateTime utc) {

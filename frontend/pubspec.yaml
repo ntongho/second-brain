@@ -33,11 +33,12 @@ dev_dependencies:
   flutter_lints: ^5.0.0
   mocktail: ^1.0.4
 
-# record_linux 0.7.2 (record 5.2.1) does not implement startStream.
-# Caret on record_platform_interface pulled 1.6 / 1.3 and broke Android compile.
+# record 5.2.1 era. Caret on record_web pulled 1.3.0 (needs streamBufferSize / interface 1.5).
+# record_linux 0.7.2 does not implement startStream; interface 1.3+ broke Android compile.
 dependency_overrides:
   record_platform_interface: 1.2.0
   record_linux: 0.7.2
+  record_web: 1.1.5
   flutter_plugin_android_lifecycle: 2.0.22
 
 flutter:

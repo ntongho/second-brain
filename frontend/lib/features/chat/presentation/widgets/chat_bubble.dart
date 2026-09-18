@@ -82,13 +82,23 @@ class ChatBubble extends StatelessWidget {
                 '${message.content}${message.streaming ? '▍' : ''}',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
-            if (message.citations.isNotEmpty)
+            if (message.citations.isNotEmpty) ...[
+              const SizedBox(height: 8),
               Wrap(
                 children: [
                   for (var i = 0; i < message.citations.length; i++)
                     CitationChip(index: i + 1, citation: message.citations[i]),
                 ],
               ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => _viewSources(context),
+                  icon: const Icon(Icons.menu_book_outlined, size: 18),
+                  label: Text('Open sources (${message.citations.length})'),
+                ),
+              ),
+            ],
             if (!message.streaming || message.content.isNotEmpty) const SizedBox(height: 8),
             if (message.streaming && message.content.isEmpty)
               TextButton(onPressed: onCancel, child: const Text('Cancel'))
@@ -106,11 +116,6 @@ class ChatBubble extends StatelessWidget {
                     TextButton(onPressed: onRetry, child: const Text('Retry'))
                   else
                     TextButton(onPressed: onRegenerate, child: const Text('↻')),
-                  if (message.citations.isNotEmpty)
-                    TextButton(
-                      onPressed: () => _viewSources(context),
-                      child: Text('View sources(${message.citations.length})'),
-                    ),
                 ],
               ),
             if (devMode)

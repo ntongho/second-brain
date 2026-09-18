@@ -209,7 +209,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                 )
               : ListView.builder(
                   controller: _scroll,
-                  padding: const EdgeInsets.only(top: 8, bottom: 16),
+                  padding: const EdgeInsets.only(top: 8, bottom: 24),
                   itemCount: chat.messages.length + (_showFollowUps(chat) ? 1 : 0),
                   itemBuilder: (context, i) {
                     if (i == chat.messages.length) {

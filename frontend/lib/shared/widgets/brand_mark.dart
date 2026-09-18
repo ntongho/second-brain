@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:second_brain/core/theme/tokens.dart';
 
-/// Geometric notebook mark. Drawn, not a generated picture.
+/// Twin-lobe geometric mark. Drawn, not a generated picture.
 class BrandMark extends StatelessWidget {
   const BrandMark({super.key, this.size = 28});
 
@@ -10,7 +10,7 @@ class BrandMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Semantics(
-      label: 'Second Brain',
+      label: 'SecondBrain',
       image: true,
       child: SizedBox(
         width: size,
@@ -27,40 +27,47 @@ class _BrandMarkPainter extends CustomPainter {
     final s = size.shortestSide;
     final bg = Paint()..color = SbTokens.darkBg;
     final ink = Paint()..color = SbTokens.darkTextHi;
-    final hair = Paint()..color = SbTokens.hairline;
+    final echo = Paint()
+      ..color = const Color(0xFF5A5854)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = (s * 0.055).clamp(1.2, 3.5);
     canvas.drawRRect(RRect.fromLTRBR(0, 0, s, s, Radius.circular(s * 0.18)), bg);
 
-    final outer = RRect.fromLTRBR(s * 0.18, s * 0.18, s * 0.82, s * 0.82, Radius.circular(s * 0.12));
-    canvas.drawRRect(outer, ink);
-    final pad = s * 0.045;
-    final inner = RRect.fromLTRBR(
-      outer.left + pad,
-      outer.top + pad,
-      outer.right - pad,
-      outer.bottom - pad,
-      Radius.circular(s * 0.09),
-    );
-    canvas.drawRRect(inner, bg);
+    final m = s * 0.14;
+    final span = s - 2 * m;
+    final shift = Offset(span * 0.055, span * 0.04);
 
-    final fold = s * 0.16;
-    final foldPath = Path()
-      ..moveTo(inner.right, inner.top)
-      ..lineTo(inner.right - fold, inner.top)
-      ..lineTo(inner.right, inner.top + fold)
-      ..close();
-    canvas.drawPath(foldPath, ink);
-
-    final x0 = inner.left + inner.width * 0.18;
-    var y = inner.top + inner.height * 0.42;
-    final h = (s * 0.028).clamp(1.0, 3.0);
-    for (final frac in [1.0, 0.78, 0.52]) {
-      final w = inner.width * 0.58 * frac;
-      canvas.drawRRect(
-        RRect.fromLTRBR(x0, y, x0 + w, y + h, Radius.circular(h)),
-        hair,
-      );
-      y += inner.height * 0.12;
+    void lobes(Offset o, Paint p) {
+      final left = Rect.fromLTRB(m + span * 0.06, m + span * 0.16, m + span * 0.58, m + span * 0.78).shift(o);
+      final right = Rect.fromLTRB(m + span * 0.38, m + span * 0.10, m + span * 0.94, m + span * 0.72).shift(o);
+      final cere = Rect.fromLTRB(m + span * 0.18, m + span * 0.58, m + span * 0.52, m + span * 0.94).shift(o);
+      canvas.drawOval(left, p);
+      canvas.drawOval(right, p);
+      canvas.drawOval(cere, p);
     }
+
+    lobes(shift, echo);
+    lobes(Offset.zero, ink);
+
+    final cleft = Paint()
+      ..color = SbTokens.darkBg
+      ..strokeWidth = (s * 0.06).clamp(1.5, 4)
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(m + span * 0.48, m + span * 0.20),
+      Offset(m + span * 0.52, m + span * 0.68),
+      cleft,
+    );
+    canvas.drawRRect(
+      RRect.fromLTRBR(
+        m + span * 0.46,
+        m + span * 0.78,
+        m + span * 0.58,
+        m + span * 0.97,
+        Radius.circular(span * 0.04),
+      ),
+      ink,
+    );
   }
 
   @override

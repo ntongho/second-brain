@@ -33,9 +33,9 @@ class Citation {
       documentId: json['document_id'] as String? ?? '',
       title: json['title'] as String? ?? '',
       snippet: json['snippet'] as String? ?? '',
-      page: json['page'] as int?,
-      startChar: json['start_char'] as int?,
-      endChar: json['end_char'] as int?,
+      page: (json['page'] as num?)?.toInt(),
+      startChar: (json['start_char'] as num?)?.toInt(),
+      endChar: (json['end_char'] as num?)?.toInt(),
       score: (json['score'] as num?)?.toDouble() ?? 0,
       retrieval: json['retrieval'] as String?,
     );

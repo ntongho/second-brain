@@ -71,6 +71,22 @@ class LocalCache {
     await _flush();
   }
 
+  Future<void> replaceThreads(List<Map<String, dynamic>> rows) async {
+    await _ensure();
+    final map = <String, dynamic>{};
+    for (final t in rows) {
+      final id = t['remoteId'] as String? ?? t['id'] as String?;
+      if (id == null || id.isEmpty) continue;
+      map[id] = {
+        'remoteId': id,
+        'title': t['title'] ?? 'Chat',
+        'updatedAt': t['updatedAt'] ?? DateTime.now().toUtc().toIso8601String(),
+      };
+    }
+    _root['threads'] = map;
+    await _flush();
+  }
+
   Future<void> replaceMessagesFor(String chatRemoteId, List<Map<String, dynamic>> msgs) async {
     await _ensure();
     final messages = _map('messages');

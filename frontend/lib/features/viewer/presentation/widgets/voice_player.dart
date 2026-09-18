@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:second_brain/core/theme/tokens.dart';
 import 'package:second_brain/features/ingestion/presentation/widgets/audio_waveform.dart';
+import 'package:second_brain/features/viewer/presentation/widgets/play_bytes.dart';
 
 String sniffAudioContentType(Uint8List b) {
   if (b.length >= 12 && b[0] == 0x52 && b[1] == 0x49 && b[2] == 0x46 && b[3] == 0x46) {
@@ -21,27 +22,10 @@ String sniffAudioContentType(Uint8List b) {
   if (b.length >= 8 && b[4] == 0x66 && b[5] == 0x74 && b[6] == 0x79 && b[7] == 0x70) {
     return 'audio/mp4';
   }
-  return 'audio/webm';
-}
-
-class _BytesSource extends StreamAudioSource {
-  _BytesSource(this.bytes, this.contentType);
-
-  final Uint8List bytes;
-  final String contentType;
-
-  @override
-  Future<StreamAudioResponse> request([int? start, int? end]) async {
-    start ??= 0;
-    end ??= bytes.length;
-    return StreamAudioResponse(
-      sourceLength: bytes.length,
-      contentLength: end - start,
-      offset: start,
-      stream: Stream.value(bytes.sublist(start, end)),
-      contentType: contentType,
-    );
+  if (b.length >= 2 && b[0] == 0xFF && (b[1] & 0xF0) == 0xF0) {
+    return 'audio/aac';
   }
+  return 'audio/mp4';
 }
 
 class VoicePlayer extends StatefulWidget {
@@ -56,6 +40,7 @@ class VoicePlayer extends StatefulWidget {
 
 class _VoicePlayerState extends State<VoicePlayer> {
   final _player = AudioPlayer();
+  Future<void> Function()? _cleanup;
   var _speed = 1.0;
   var _ready = false;
   Object? _error;
@@ -66,10 +51,24 @@ class _VoicePlayerState extends State<VoicePlayer> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(VoicePlayer old) {
+    super.didUpdateWidget(old);
+    if (old.bytes != widget.bytes) {
+      _load();
+    }
+  }
+
   Future<void> _load() async {
+    setState(() {
+      _ready = false;
+      _error = null;
+    });
     try {
+      await _cleanup?.call();
+      _cleanup = null;
       final type = widget.contentType ?? sniffAudioContentType(widget.bytes);
-      await _player.setAudioSource(_BytesSource(widget.bytes, type));
+      _cleanup = await loadPlayable(_player, widget.bytes, type);
       if (!mounted) return;
       setState(() => _ready = true);
     } catch (e) {
@@ -80,6 +79,7 @@ class _VoicePlayerState extends State<VoicePlayer> {
 
   @override
   void dispose() {
+    _cleanup?.call();
     _player.dispose();
     super.dispose();
   }
@@ -93,7 +93,10 @@ class _VoicePlayerState extends State<VoicePlayer> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return Text('Could not play audio. $_error', style: Theme.of(context).textTheme.bodySmall);
+      return Text(
+        'Could not play this take. Discard and record again, or add it anyway — transcription still works.',
+        style: Theme.of(context).textTheme.bodySmall,
+      );
     }
     if (!_ready) {
       return const Padding(
